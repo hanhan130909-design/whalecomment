@@ -1,0 +1,6 @@
+node_modules/
+wc_profile/
+dist/
+electron_dist/
+*.log
+.DS_Store

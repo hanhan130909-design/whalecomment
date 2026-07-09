@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>WhaleComment</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei',sans-serif;background:#0f0f1a;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.c{width:560px;padding:24px}
+h1{text-align:center;color:#ff2d55;margin-bottom:20px}
+.row{display:flex;gap:8px;margin-bottom:12px}
+input{flex:1;padding:10px;border:1px solid #252540;border-radius:6px;background:#1a1a2e;color:#fff;font-size:14px}
+button{padding:10px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-start{background:#ff2d55;color:#fff;flex:1}
+.btn-stop{background:#333;color:#ccc;flex:1}
+button:disabled{opacity:0.4;cursor:not-allowed}
+#log{background:#0d1117;border:1px solid #252540;border-radius:8px;padding:12px;height:300px;overflow-y:auto;font:12px Consolas,monospace;white-space:pre-wrap;margin-top:12px}
+.info{color:#58a6ff}.ok{color:#3fb950}.err{color:#ff2d55}
+</style></head><body>
+<div class="c">
+<h1>🐋 WhaleComment</h1>
+<div class="row">
+<input id="host" placeholder="Host ID (dari Dashboard)" value="h_1783502518392">
+</div>
+<div class="row">
+<input id="token" placeholder="Host Token (dari Dashboard)" style="font-family:monospace;font-size:12px">
+</div>
+<div class="row">
+<button class="btn-start" id="btnStart" onclick="start()">▶ Start</button>
+<button class="btn-stop" id="btnStop" onclick="stop()" disabled>⏹ Stop</button>
+</div>
+<div id="log"><span class="info">Siap. Masukkan Host ID lalu klik Start.</span></div>
+</div>
+<script>
+var el=document.getElementById('log'),startBtn=document.getElementById('btnStart'),stopBtn=document.getElementById('btnStop');
+function add(t,c){var s=document.createElement('span');s.className=c||'info';s.textContent=t;el.appendChild(s);el.scrollTop=el.scrollHeight}
+window.api.onLog(function(t){var l=t.toLowerCase();add(t,l.includes('error')||l.includes('err')?'err':l.includes('ok')||l.includes('total')?'ok':'info')});
+window.api.onDone(function(){startBtn.disabled=false;stopBtn.disabled=true;add('\n-- Selesai --\n','info')});
+async function start(){el.innerHTML='';add('Starting...\n','info');startBtn.disabled=true;stopBtn.disabled=false;var hid = document.getElementById('host').value; var tok = document.getElementById('token').value; await window.api.start(hid + ' ' + tok)}
+async function stop(){add('Stopping...\n','info');await window.api.stop();startBtn.disabled=false;stopBtn.disabled=true}
+</script>
+</body></html>
