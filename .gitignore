@@ -2,5 +2,7 @@ node_modules/
 wc_profile/
 dist/
 electron_dist/
+release/
+tmp_asar_*/
 *.log
 .DS_Store

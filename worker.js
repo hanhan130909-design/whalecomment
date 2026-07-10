@@ -409,21 +409,21 @@ async function main() {
           continue;
         }
         
-        // Click the FIRST VIDEO that BELONGS TO THE TARGET PROFILE.
+        // Find the FIRST VIDEO URL that BELONGS TO THE TARGET PROFILE.
         // Must NOT match recommended/sidebar videos from other accounts.
-        var clickedOwn = await page.evaluate(function(username) {
+        // Then navigate directly via page.goto (more reliable than .click() on TikTok SPA).
+        var ownVideoHref = await page.evaluate(function(username) {
           var links = document.querySelectorAll('a[href*="/video/"]');
           for (var i = 0; i < links.length; i++) {
             var href = (links[i].getAttribute('href') || '').toLowerCase();
             if (href.indexOf('/@' + username.toLowerCase() + '/video/') !== -1) {
-              links[i].click();
-              return true;
+              return links[i].href || links[i].getAttribute('href');
             }
           }
-          return false;
+          return null;
         }, targetUsername);
         
-        if (!clickedOwn) {
+        if (!ownVideoHref) {
           log('[WC] ✗ No own-video link found for @' + targetUsername + ' - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
@@ -435,7 +435,10 @@ async function main() {
           mvpStats.failed++;
           continue;
         }
-        await sleep(3000); dots++; if (dots > 60) break;
+        // Navigate directly to the own-video URL
+        log('[WC] → Navigating to own video: ' + ownVideoHref);
+        await page.goto(ownVideoHref, { waitUntil: 'domcontentloaded', timeout: 90000 });
+        await sleep(5000); dots++; if (dots > 60) break;
 
         // Verify we're now on the TARGET's video page (not a wrong account)
         var finalHref = await page.evaluate(function() { return location.href; });
@@ -444,7 +447,7 @@ async function main() {
           return href.indexOf('/@' + username.toLowerCase() + '/video/') !== -1;
         }, targetUsername);
         if (!onVideoOfTarget) {
-          log('[WC] ✗ Clicked but landed on wrong account: ' + finalHref + ' - skipping');
+          log('[WC] ✗ Landed on wrong page (not target video): ' + finalHref + ' - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
               method: 'PATCH',
@@ -474,50 +477,35 @@ async function main() {
       await page.keyboard.press('KeyC');
       await sleep(2000);
       
-      // Click comment icon as secondary method
-      var commentOpened = await page.evaluate(function() {
-        var debug = [];
+      // Open comment panel: prefer a REAL click (triggers TikTok React handlers)
+      // over synthetic .click(); fall back to KeyC if real click fails.
+      var commentSel = await page.evaluate(function() {
         var selectors = [
-          // data-e2e (TikTok internal - try multiple variants)
-          '[data-e2e="comment-button"]',
           '[data-e2e="comment-icon"]',
-          '[data-e2e="comment"]',
-          '[data-e2e="browse-comment-button"]',
+          '[data-e2e="comment-button"]',
           '[data-e2e="browse-comment-icon"]',
-          // aria-label
           'button[aria-label*="comment" i]',
-          'div[aria-label*="comment" i]',
-          // SVG path for comment bubble (M20 4 pattern is common for comment icons)
-          'svg path[d*="20"][d*="4"]',
-          'svg path[d*="comment"]',
-          // class patterns
-          '[class*="InteractionItem"] [class*="icon"]',
-          '[class*="ActionItem"]',
-          '[class*="ActionBar"] [class*="Icon"]',
-          // TikTok's actual class: e.g. tiktok-xxx
-          'button[class*="tiktok"]'
+          '[class*="ActionItem"]'
         ];
-        var clicked = false;
         for (var s of selectors) {
           var el = document.querySelector(s);
-          if (el && el.offsetParent !== null) {
-            el.click();
-            clicked = true;
-            debug.push('MATCH:' + s);
-            break;
-          } else {
-            debug.push('MISS:' + s.substring(0, 40));
-          }
+          if (el && el.offsetParent !== null) return s;
         }
-        return { clicked: clicked, debug: debug.slice(0, 6) };
+        return null;
       });
-      
-      log('[WC] DEBUG comment-btn: ' + JSON.stringify(commentOpened.debug));
-      await sleep(2000);
-      
-      // Press C again if panel not confirmed open
-      await page.keyboard.press('KeyC');
-      await sleep(2000);
+      if (commentSel) {
+        try {
+          await page.click(commentSel);
+          log('[WC] Clicked comment button (real): ' + commentSel);
+        } catch(e) {
+          log('[WC] Real click failed (' + e.message.split('\n')[0] + '), falling back to KeyC');
+          await page.keyboard.press('KeyC');
+        }
+      } else {
+        log('[WC] No comment button selector found, trying KeyC');
+        await page.keyboard.press('KeyC');
+      }
+      await sleep(3500);
 
       // Detect comment panel + find input with expanded selectors
       var result = await page.evaluate(function() {
@@ -625,6 +613,16 @@ async function main() {
       });
       
       log('[WC] DEBUG comment-input: ' + JSON.stringify(result.debug));
+
+      if (!result.found) {
+        // DIAGNOSTIC: dump comment panel HTML to learn TikTok's real structure
+        var diagHtml = await page.evaluate(function() {
+          var panel = document.querySelector('[data-e2e="comment-panel"], [data-e2e="comment-list-container"], [class*="CommentListContainer"], [class*="CommentPanel"], [class*="comment"]');
+          if (!panel) return 'NO_PANEL';
+          return panel.outerHTML.substring(0, 2200);
+        });
+        log('[WC] DEBUG comment-panel-html: ' + (diagHtml || '').substring(0, 2000));
+      }
 
       if (!result.found) {
         if (result.reason === 'restricted') {
