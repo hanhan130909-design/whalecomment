@@ -39,7 +39,7 @@ jobs:
           echo "Created placeholder wc_profile for branch build"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build macOS (x64 + arm64)
         run: npx electron-builder --mac zip
@@ -85,7 +85,7 @@ jobs:
         run: New-Item -ItemType Directory -Force wc_profile | Out-Null
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Windows zip
         run: npx electron-builder --win zip
