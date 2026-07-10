@@ -24,23 +24,19 @@ jobs:
       - name: Download wc_profile from latest release
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          # Download wc_profile from the most recent release that has it
-          ASSET_URL=$(curl -sL \
+          # Search all releases for wc_profile.zip (v1.1.3 release may be empty)
+          ASSET_URL=""
+          for url in $(curl -sL \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/releases" \
-            | python3 -c "
-import sys,json
-releases=json.load(sys.stdin)
-for r in releases:
-    for a in r.get('assets',[]):
-        if a['name']=='wc_profile.zip':
-            print(a['browser_download_url'])
-            sys.exit(0)
-print('NOT_FOUND')
-" 2>&1)
-          if [ "$ASSET_URL" = "NOT_FOUND" ]; then
-            echo "wc_profile.zip not in any release — creating placeholder"
+            | python3 -c "import sys,json; [print(a['url'], a['browser_download_url']) for r in json.load(sys.stdin) for a in r.get('assets',[]) if a['name']=='wc_profile.zip']"); do
+            if [ -z "$ASSET_URL" ]; then
+              ASSET_URL="$url"
+            fi
+          done
+          if [ -z "$ASSET_URL" ]; then
+            echo "wc_profile.zip not found in any release"
             mkdir -p wc_profile
           else
             echo "Downloading wc_profile from: $ASSET_URL"
@@ -61,6 +57,26 @@ print('NOT_FOUND')
         run: npx electron-builder --mac zip
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          # Find the built zip file
+          ZIP_FILE=$(find release -name "*.zip" -type f | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Uploading $ZIP_FILE to release ${{ github.ref_name }}"
+            curl -sL \
+              -X POST \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/zip" \
+              --data-binary @"$ZIP_FILE" \
+              "https://uploads.github.com/repos/${{ github.repository }}/releases/$(curl -sL -H 'Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')/assets?name=$(basename "$ZIP_FILE")"
+          else
+            echo "No zip file found in release/"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -119,6 +135,20 @@ print('"'"'NOT_FOUND'"'"')
 
       - name: Build Windows zip
         run: npx electron-builder --win zip
+
+      - name: Upload Windows to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $zip = Get-ChildItem "release\*.zip" | Select-Object -First 1
+          if ($zip) {
+            Write-Host "Uploading $($zip.Name) to release $env:GITHUB_REF_NAME"
+            $releaseId = (curl.exe -sL -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+            curl.exe -sL -X POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "Content-Type: application/zip" --data-binary "@$($zip.FullName)" "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$releaseId/assets?name=$($zip.Name)"
+          } else {
+            Write-Host "No zip file found in release/"
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
