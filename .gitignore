@@ -6,3 +6,13 @@ release/
 tmp_asar_*/
 *.log
 .DS_Store
+
+last_stage.txt
+
+stage_116
+
+stage_116_*
+
+test_worker.err
+
+test_worker.log

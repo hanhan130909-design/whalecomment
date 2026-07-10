@@ -366,7 +366,8 @@ async function main() {
       }
       var targetUrl = task.videoUrl || ('https://www.tiktok.com/@' + targetUsername);
       log('[WC] Opening: https://www.tiktok.com/@' + targetUsername + ' (task.' + (task.profileId ? 'profileId' : 'whale_username') + ')');
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
+      await page.goto(targetUrl, { waitUntil: 'load', timeout: 90000 });
+      try { await page.waitForSelector('body', { timeout: 30000 }); } catch (_) {}
       await sleep(3000); dots++; if (dots > 60) break;
 
       // === Verify we actually landed on the TARGET profile ===
@@ -437,8 +438,10 @@ async function main() {
         }
         // Navigate directly to the own-video URL
         log('[WC] → Navigating to own video: ' + ownVideoHref);
-        await page.goto(ownVideoHref, { waitUntil: 'domcontentloaded', timeout: 90000 });
-        await sleep(5000); dots++; if (dots > 60) break;
+        await page.goto(ownVideoHref, { waitUntil: 'load', timeout: 90000 });
+        // Wait for the main frame to be fully attached + for the video element to mount
+        try { await page.waitForSelector('video', { timeout: 30000 }); } catch (_) {}
+        await sleep(3000); dots++; if (dots > 60) break;
 
         // Verify we're now on the TARGET's video page (not a wrong account)
         var finalHref = await page.evaluate(function() { return location.href; });
@@ -668,10 +671,12 @@ async function main() {
           }
         }
       } else {
-        // Found input - type the comment
-        var typed = await page.evaluate(function(commentText) {
+        // Found input - type using REAL keyboard events + VERIFY in list
+        // Step 1: mark the input with a unique attribute so we can target it across evaluate calls
+        var marker = 'data-wc-input-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
+        var marked = await page.evaluate(function(markerAttr) {
           var el = null;
-          // Re-find the input
+          // Re-find input (same strategy as the input-detection block)
           var candidates = document.querySelectorAll('*');
           for (var i = 0; i < candidates.length; i++) {
             var c = candidates[i];
@@ -692,69 +697,104 @@ async function main() {
             }
           }
           if (!el) return false;
-
+          el.setAttribute(markerAttr, '1');
           el.focus();
-          // Clear existing text
-          el.textContent = '';
-          el.innerText = '';
-          // Type character by character to trigger reactive UI
-          el.textContent = commentText;
-          el.innerText = commentText;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
           return true;
-        }, text);
-
-        if (typed) {
+        }, marker);
+        if (!marked) {
+          log('[WC] ✗ Could not re-locate input for typing');
+          mvpStats.failed++;
+          if (task.id) {
+            fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Input not re-locatable', executed_at: new Date().toISOString() }) }).catch(function(){});
+          }
+          await page.keyboard.press('Escape');
+          await sleep(500);
+        } else {
+          // Step 2: click into the input and clear it (Ctrl+A, Delete) — these fire real keyboard events
+          await page.click('[' + marker + '="1"]');
+          await sleep(200);
+          await page.keyboard.down('Control');
+          await page.keyboard.press('A');
+          await page.keyboard.up('Control');
+          await page.keyboard.press('Delete');
+          await sleep(300);
+          // Step 3: type using page.keyboard.type — fires real keydown/keypress/input events that React listens to
+          await page.keyboard.type(text, { delay: 40 });
           await sleep(1500);
-          // Find and click Post button with expanded selectors
-          var posted = await page.evaluate(function() {
-            // Priority: data-e2e
-            var btn = document.querySelector('[data-e2e="comment-post-button"]');
-            if (btn && !btn.disabled && btn.offsetParent !== null) { btn.click(); return 'data-e2e'; }
-            // Class patterns
-            var patterns = [
-              '[class*="CommentPostButton"]',
-              '[class*="post-btn"]',
-              '[class*="PostButton"]',
-              'button[class*="action"]'
-            ];
-            for (var p of patterns) {
-              var b = document.querySelector(p);
-              if (b && !b.disabled && b.offsetParent !== null) { b.click(); return 'class'; }
+          // Step 4: verify text actually went into the input
+          var inputText = await page.evaluate(function(markerAttr) {
+            var el = document.querySelector('[' + markerAttr + '="1"]');
+            if (!el) return '';
+            return (el.textContent || el.innerText || '').trim();
+          }, marker);
+          log('[WC] DEBUG typed-into: "' + inputText.substring(0, 80) + '" (len=' + inputText.length + ')');
+          if (inputText.length < 5) {
+            log('[WC] ✗ Typing FAILED: input is empty after keyboard.type — React onChange did not fire');
+            mvpStats.failed++;
+            if (task.id) {
+              fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Typing failed: input empty', executed_at: new Date().toISOString() }) }).catch(function(){});
             }
-            // Text match
-            var all = document.querySelectorAll('button, div[role="button"], span');
-            for (var i = 0; i < all.length; i++) {
-              var t = (all[i].textContent || '').trim().toLowerCase();
-              if ((t === 'post' || t === 'kirim' || t === '发布' || t === 'publish' || t === 'send') &&
-                  all[i].offsetParent !== null && !all[i].disabled) {
-                all[i].click(); return 'text:' + t;
+            await page.keyboard.press('Escape');
+            await sleep(500);
+          } else {
+            // Step 5: click Post button (only if enabled)
+            var posted = await page.evaluate(function() {
+              var btn = document.querySelector('[data-e2e="comment-post-button"]');
+              if (btn && !btn.disabled && btn.offsetParent !== null) { btn.click(); return 'data-e2e'; }
+              var patterns = ['[class*="CommentPostButton"]', '[class*="post-btn"]', '[class*="PostButton"]', 'button[class*="action"]'];
+              for (var p of patterns) {
+                var b = document.querySelector(p);
+                if (b && !b.disabled && b.offsetParent !== null) { b.click(); return 'class:' + p; }
+              }
+              var all = document.querySelectorAll('button, div[role="button"], span');
+              for (var i = 0; i < all.length; i++) {
+                var t = (all[i].textContent || '').trim().toLowerCase();
+                if ((t === 'post' || t === 'kirim' || t === '发布' || t === 'publish' || t === 'send') && all[i].offsetParent !== null && !all[i].disabled) {
+                  all[i].click(); return 'text:' + t;
+                }
+              }
+              return false;
+            });
+            if (posted) {
+              log('[WC] Clicked Post button (' + posted + ')');
+            } else {
+              log('[WC] No enabled Post button — pressing Enter');
+              await page.keyboard.press('Enter');
+            }
+            await sleep(3500);
+            // Step 6: CRITICAL — verify the comment actually appears in the comment list (not just "Posted (class)" which was a false positive)
+            var verified = await page.evaluate(function(searchText) {
+              var items = document.querySelectorAll('[class*="CommentItem"], [class*="comment-item"], [class*="CommentTextContainer"], [data-e2e="comment-level-1"], [class*="comment-text"]');
+              for (var it of items) {
+                var txt = (it.textContent || '').trim();
+                if (txt.indexOf(searchText.substring(0, 12)) !== -1) return true;
+              }
+              // Fallback: input cleared (good sign post succeeded)
+              var inputs = document.querySelectorAll('div[contenteditable="true"]');
+              for (var inp of inputs) {
+                if (inp.offsetParent !== null && (inp.textContent || '').trim().length === 0) return 'input_cleared';
+              }
+              return false;
+            }, text);
+            if (verified === true) {
+              mvpStats.completed++;
+              log('[WC] ✓ VERIFIED in comment list, MVP: ' + mvpStats.completed + '/' + mvpStats.target);
+              if (task.id) {
+                fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed', executed_at: new Date().toISOString(), liked: true, verified: true }) }).catch(function(){});
+              }
+            } else if (verified === 'input_cleared') {
+              mvpStats.completed++;
+              log('[WC] ? Input cleared (post may have succeeded), MVP: ' + mvpStats.completed + '/' + mvpStats.target);
+              if (task.id) {
+                fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed', executed_at: new Date().toISOString(), liked: true, verified: 'input_cleared' }) }).catch(function(){});
+              }
+            } else {
+              mvpStats.failed++;
+              log('[WC] ✗ NOT VERIFIED: post button clicked but comment not in list — treating as FAILURE');
+              if (task.id) {
+                fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Comment not in list after post', executed_at: new Date().toISOString() }) }).catch(function(){});
               }
             }
-            // Try Enter key as last resort
-            return false;
-          });
-
-          if (posted) {
-            log('[WC] ✓ Posted (' + posted + ')');
-          } else {
-            await page.keyboard.press('Enter');
-            await sleep(500);
-            await page.keyboard.press('Enter');
-            log('[WC] ✓ Posted (Enter key)');
-          }
-
-          await sleep(2000);
-          mvpStats.completed++;
-          log('[WC] ✓ Done! MVP: ' + mvpStats.completed + '/' + mvpStats.target);
-
-          if (task.id) {
-            fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'completed', executed_at: new Date().toISOString(), liked: true })
-            }).catch(function(){});
           }
         }
       }
