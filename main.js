@@ -5,15 +5,12 @@ const { fork } = require('child_process');
 let win, worker;
 
 // In production (asar), __dirname points INSIDE the asar archive.
-// app.getAppPath() returns the real path to the app.
-// For unpacked resources (app.asar.unpacked/), compute sibling path.
-function getUnpackedWorkerPath() {
+// worker.js is packed inside app.asar — use require.resolve or a simple sibling path.
+function getWorkerPath() {
   var appPath = app.getAppPath();
-  // appPath ends with 'app.asar' in production
+  // Packed: app.asar/worker.js  (everything in asar now)
   if (appPath.endsWith('.asar')) {
-    // app.asar.unpacked is a sibling directory (not inside app.asar)
-    var unpacked = appPath.replace(/\\app\.asar$/, '\\app.asar.unpacked');
-    return path.join(unpacked, 'worker.js');
+    return path.join(appPath, 'worker.js');
   }
   // Development: worker.js is in same dir as main.js
   return path.join(__dirname, 'worker.js');
@@ -31,7 +28,7 @@ app.whenReady().then(() => {
 ipcMain.handle('start', (e, hostId) => {
   if (worker) worker.kill();
   var args = hostId.split(' ');
-  var workerPath = getUnpackedWorkerPath();
+  var workerPath = getWorkerPath();
   win?.webContents.send('log', '[MAIN] Worker path: ' + workerPath + '\\n');
   worker = fork(workerPath, args, { silent: true });
   worker.stdout.on('data', d => win?.webContents.send('log', d.toString()));
