@@ -369,6 +369,27 @@ async function main() {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
       await sleep(3000); dots++; if (dots > 60) break;
 
+      // === Verify we actually landed on the TARGET profile ===
+      // TikTok may redirect to /login or back to the logged-in host's own page.
+      var landedHref = await page.evaluate(function() { return location.href; });
+      var onTarget = await page.evaluate(function(username) {
+        var href = location.href.toLowerCase();
+        return href.indexOf('/@' + username.toLowerCase()) !== -1;
+      }, targetUsername);
+      if (!onTarget) {
+        log('[WC] ✗ Redirected away from @' + targetUsername + ' (landed: ' + landedHref + ') - skipping');
+        if (task.id) {
+          fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'failed', error: 'Navigation redirected away from target profile: ' + landedHref, executed_at: new Date().toISOString() })
+          }).catch(function(){});
+        }
+        mvpStats.failed++;
+        await sleep(3000);
+        continue;
+      }
+
       // Check if on profile page (no specific video)
       var isProfile = await page.evaluate(function() { return !location.href.includes('/video/'); });
       
@@ -388,12 +409,52 @@ async function main() {
           continue;
         }
         
-        // Click first video
-        await page.evaluate(function() {
-          var link = document.querySelector('a[href*="/video/"], [data-e2e="user-post-item"] a');
-          if (link) link.click();
-        });
+        // Click the FIRST VIDEO that BELONGS TO THE TARGET PROFILE.
+        // Must NOT match recommended/sidebar videos from other accounts.
+        var clickedOwn = await page.evaluate(function(username) {
+          var links = document.querySelectorAll('a[href*="/video/"]');
+          for (var i = 0; i < links.length; i++) {
+            var href = (links[i].getAttribute('href') || '').toLowerCase();
+            if (href.indexOf('/@' + username.toLowerCase() + '/video/') !== -1) {
+              links[i].click();
+              return true;
+            }
+          }
+          return false;
+        }, targetUsername);
+        
+        if (!clickedOwn) {
+          log('[WC] ✗ No own-video link found for @' + targetUsername + ' - skipping');
+          if (task.id) {
+            fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'failed', error: 'No own-video link on profile', executed_at: new Date().toISOString() })
+            }).catch(function(){});
+          }
+          mvpStats.failed++;
+          continue;
+        }
         await sleep(3000); dots++; if (dots > 60) break;
+
+        // Verify we're now on the TARGET's video page (not a wrong account)
+        var finalHref = await page.evaluate(function() { return location.href; });
+        var onVideoOfTarget = await page.evaluate(function(username) {
+          var href = location.href.toLowerCase();
+          return href.indexOf('/@' + username.toLowerCase() + '/video/') !== -1;
+        }, targetUsername);
+        if (!onVideoOfTarget) {
+          log('[WC] ✗ Clicked but landed on wrong account: ' + finalHref + ' - skipping');
+          if (task.id) {
+            fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'failed', error: 'Video click landed on wrong account: ' + finalHref, executed_at: new Date().toISOString() })
+            }).catch(function(){});
+          }
+          mvpStats.failed++;
+          continue;
+        }
       }
 
       // Like the video first
