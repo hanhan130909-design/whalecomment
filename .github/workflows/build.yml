@@ -1,0 +1,100 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  release:
+    types: [published]
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Download wc_profile from Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ASSET_URL=$(curl -sL \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
+            | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['browser_download_url'] for a in assets if a['name']=='wc_profile.zip'))")
+          echo "Downloading wc_profile from: $ASSET_URL"
+          curl -sL -o wc_profile.zip "$ASSET_URL"
+          unzip -q wc_profile.zip
+          echo "wc_profile extracted: $(du -sh wc_profile)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create empty wc_profile for non-release builds
+        if: startsWith(github.ref, 'refs/heads/')
+        run: |
+          mkdir -p wc_profile
+          echo "Created placeholder wc_profile for branch build"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS (x64 + arm64)
+        run: npx electron-builder --mac zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref }}
+          files: release/mac/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Download wc_profile from Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $headers = @{ "Authorization" = "token ${{ secrets.GITHUB_TOKEN }}" }
+          $url = "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}"
+          $asset = (curl.exe -sL $url -H @headers | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['browser_download_url'] for a in assets if a['name']=='wc_profile.zip'))") 2>$null
+          if (-not $asset) { echo "wc_profile.zip not found in release"; exit 0 }
+          echo "Downloading wc_profile..."
+          curl.exe -sL -o wc_profile.zip "$asset"
+          Expand-Archive -Force wc_profile.zip .
+          echo "wc_profile extracted"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create empty wc_profile for non-release builds
+        if: startsWith(github.ref, 'refs/heads/')
+        run: New-Item -ItemType Directory -Force wc_profile | Out-Null
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows zip
+        run: npx electron-builder --win zip
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref }}
+          files: release/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
