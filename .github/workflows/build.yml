@@ -60,7 +60,7 @@ jobs:
         if: always()
         with:
           name: macos-build
-          path: release/mac/
+          path: release/
           retention-days: 14
 
   build-win:
