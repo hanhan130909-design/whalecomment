@@ -625,12 +625,6 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
     } catch(dbErr) {
       console.log('[TASKS] Supabase whale query failed:', dbErr.message);
     }
-    const myCount = Math.floor(limit * 0.30);
-    const usCount = limit - idCount - myCount;
-    
-    if (idWhales.data) allWhales.push(...idWhales.data.slice(0, idCount));
-    if (myWhales.data) allWhales.push(...myWhales.data.slice(0, myCount));
-    if (usWhales.data) allWhales.push(...usWhales.data.slice(0, usCount));
     
     // æä¹±é¡ºåº
     for (let i = allWhales.length - 1; i > 0; i--) {
