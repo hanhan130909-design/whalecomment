@@ -9,7 +9,7 @@ services:
     region: singapore
     plan: free
     rootDir: backend
-    buildCommand: ""
+    buildCommand: npm ci
     startCommand: node server.js
     healthCheckPath: /api/version/latest
     envVars:
