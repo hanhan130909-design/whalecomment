@@ -602,28 +602,55 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
       }
     }
     const s = getSupa();
-    const { data: whales, error: wErr } = await s.from('whale_profiles')
-      .select('*')
-      .order('total_gifts', { ascending: false })
-      .limit(limit);
-    if (wErr) return res.status(500).json({ error: wErr.message });
-    if (!whales || !whales.length) return res.json({ success: true, count: 0, message: 'no whales' });
+    
+    // 按地区查询金主 (60% ID, 30% MY, 10% US)
+    const [idWhales, myWhales, usWhales] = await Promise.all([
+      s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
+      s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
+      s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
+    ]);
+    
+    // 合并并打乱
+    let allWhales = [];
+    const idCount = Math.floor(limit * 0.60);
+    const myCount = Math.floor(limit * 0.30);
+    const usCount = limit - idCount - myCount;
+    
+    if (idWhales.data) allWhales.push(...idWhales.data.slice(0, idCount));
+    if (myWhales.data) allWhales.push(...myWhales.data.slice(0, myCount));
+    if (usWhales.data) allWhales.push(...usWhales.data.slice(0, usCount));
+    
+    // 打乱顺序
+    for (let i = allWhales.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allWhales[i], allWhales[j]] = [allWhales[j], allWhales[i]];
+    }
+    
+    if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
 
+    // 获取所有语言的话术
     const { data: scripts } = await s.from('comment_scripts')
       .select('*')
-      .eq('lang', 'id')
       .order('success_rate', { ascending: false });
 
     if (!taskStore[hostId]) taskStore[hostId] = [];
     const existing = new Set(taskStore[hostId].map(function(t) { return t.profileId; }));
     let count = 0;
 
-    for (const w of whales) {
+    for (const w of allWhales) {
       if (existing.has(w.username)) continue;
       const persona = w.persona || 'comprehensive';
       const hostName = host.display_name || host.tiktok_username || 'kita';
-      const matching = (scripts || []).filter(function(s) { return s.persona === persona; });
-      const pool = matching.length > 0 ? matching : (scripts || []);
+      
+      // 根据地区选择话术语言
+      const whaleRegion = w.region || 'ID';
+      const scriptLang = whaleRegion === 'US' ? 'en' : 'id';
+      
+      // 筛选匹配语言和 persona 的话术
+      const matching = (scripts || []).filter(function(s) { 
+        return s.lang === scriptLang && s.persona === persona; 
+      });
+      const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
       let script = '';
       if (pool.length > 0) {
         const picked = pool[Math.floor(Math.random() * pool.length)];
@@ -632,7 +659,14 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
           .replace(/\{whale\}/g, w.nickname || w.username)
           .replace(/\{name\}/g, w.nickname || w.username);
       }
-      if (!script) script = 'Hai ' + (w.nickname || w.username) + '! ' + hostName + ' lagi live nih, mampir dong!';
+      if (!script) {
+        // Fallback 话术
+        if (scriptLang === 'en') {
+          script = 'Hey ' + (w.nickname || w.username) + '! ' + hostName + ' is live now, come check it out! 🔥';
+        } else {
+          script = 'Hai ' + (w.nickname || w.username) + '! ' + hostName + ' lagi live nih, mampir dong! 🔥';
+        }
+      }
 
       taskStore[hostId].push({
         id: 't_' + Date.now() + '_' + count,
@@ -641,6 +675,8 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
         profileId: w.username,
         whale_username: w.username,
         whale_persona: persona,
+        whale_region: whaleRegion,
+        script_lang: scriptLang,
         commentText: script,
         videoId: null,
         videoUrl: 'https://www.tiktok.com/@' + w.username,
@@ -651,7 +687,8 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
       existing.add(w.username);
       count++;
     }
-    res.json({ success: true, count, total: whales.length });
+    console.log('[TASKS] Generated', count, 'tasks for', hostId, '(ID:', Math.floor(count * 0.6), 'MY:', Math.floor(count * 0.3), 'US:', count - Math.floor(count * 0.6) - Math.floor(count * 0.3) + ')');
+    res.json({ success: true, count, total: allWhales.length, distribution: { ID: idCount, MY: myCount, US: usCount } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -665,6 +702,47 @@ app.post('/api/hosts/:id/regenerate-token', (req, res) => {
     }
     res.status(404).json({ error: 'host not found' });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// SCRIPTS IMPORT API
+// ============================================================
+app.post('/api/admin/import-scripts', authAdmin, async (req, res) => {
+  try {
+    const { scripts, clear_existing } = req.body || {};
+    if (!scripts || !Array.isArray(scripts)) {
+      return res.status(400).json({ error: 'scripts array required' });
+    }
+    
+    const s = getSupa();
+    
+    // 可选：清空现有话术
+    if (clear_existing) {
+      await s.from('comment_scripts').delete().neq('id', 0);
+      console.log('[ADMIN] Cleared existing scripts');
+    }
+    
+    // 批量插入 (每批 100 条)
+    const batchSize = 100;
+    let imported = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < scripts.length; i += batchSize) {
+      const batch = scripts.slice(i, i + batchSize);
+      const { data, error } = await s.from('comment_scripts').insert(batch);
+      if (error) {
+        console.log('[ADMIN] Batch import error:', error.message);
+        failed += batch.length;
+      } else {
+        imported += batch.length;
+      }
+    }
+    
+    console.log('[ADMIN] Imported', imported, 'scripts,', failed, 'failed');
+    res.json({ success: true, imported, failed, total: scripts.length });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ============================================================
