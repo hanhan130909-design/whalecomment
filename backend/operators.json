@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Test Operator",
+    "token": "wc_op_test123",
+    "daily_limit": 100,
+    "valid_days": 30,
+    "created": "2026-07-08T09:00:00.000Z",
+    "active": true
+  },
+  {
+    "name": "fikri",
+    "token": "wc_op_a677dc9b63eeb7bf87ff4eb7733b898bddccb181e8d9c3b2",
+    "daily_limit": 100,
+    "valid_days": 30,
+    "created": "2026-07-08T12:00:00.000Z",
+    "active": true
+  },
+  {
+    "name": "Adam",
+    "token": "wc_op_02ecc9c1fb9462307208910887413c218125b8ab3b810b5c5c5",
+    "daily_limit": 100,
+    "valid_days": 30,
+    "created": "2026-07-09T12:00:00.000Z",
+    "active": true
+  }
+]

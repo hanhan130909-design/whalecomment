@@ -1,0 +1,27 @@
+# Render Blueprint — WhaleComment Backend
+# Deploy: New → Blueprint → connect this repo → selects this file
+# Render auto-detects: Node.js, rootDir=backend/, start=node server.js
+
+services:
+  - type: web
+    name: whalecomment-backend
+    env: node
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: ""
+    startCommand: node server.js
+    healthCheckPath: /api/version/latest
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: ARK_API_KEY
+        sync: false

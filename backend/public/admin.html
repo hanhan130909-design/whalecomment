@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhaleComment 管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei',sans-serif;background:#0f0f1a;color:#e0e0e0;padding:20px}
+h1{color:#ff2d55;margin-bottom:20px}
+.card{background:#1a1a2e;border:1px solid #252540;border-radius:10px;padding:20px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #252540}
+th{color:#888;font-weight:600;font-size:12px;text-transform:uppercase}
+.badge{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-active{background:#00ff8844;color:#00ff88}
+.badge-inactive{background:#ff444444;color:#ff4444}
+input{padding:8px 12px;border:1px solid #252540;border-radius:6px;background:#0f0f1a;color:#fff;margin-right:8px;margin-bottom:8px}
+button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;margin-right:4px}
+.btn-create{background:#ff2d55;color:#fff}
+.btn-refresh{background:#333;color:#ccc}
+.btn-copy{background:#1a6b3c;color:#fff;font-size:11px}
+.btn-pause{background:#d2991d;color:#fff;font-size:11px}
+.btn-delete{background:#ff4444;color:#fff;font-size:11px}
+.toast{position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:12px 20px;border-radius:8px;display:none;z-index:999}
+</style>
+</head>
+<body>
+<h1>🐋 WhaleComment 管理后台</h1>
+
+<div class="card">
+<h2 style="margin-bottom:16px">创建运营账号</h2>
+<input id="opName" placeholder="姓名" style="width:150px">
+<input id="opLimit" type="number" value="100" style="width:80px" title="每日配额">
+<input id="opDays" type="number" value="30" style="width:80px" title="有效天数">
+<button class="btn-create" onclick="createOp()">创建运营账号</button>
+</div>
+
+<div class="card">
+<h2 style="margin-bottom:16px">运营列表 <button class="btn-refresh" onclick="loadOps()">🔄 刷新</button></h2>
+<table><thead><tr><th>姓名</th><th>Token</th><th>状态</th><th>配额</th><th>到期</th><th>操作</th></tr></thead>
+<tbody id="opList"><tr><td colspan="6" style="color:#666;text-align:center">加载中...</td></tr></tbody></table>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var TOKEN = 'wc_admin_2026_secret_token';
+var API = '';
+
+async function api(method, path, body) {
+  var r = await fetch(API + path, {
+    method: method,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': TOKEN },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return r.json();
+}
+
+async function loadOps() {
+  var data = await api('GET', '/api/admin/operators');
+  var ops = data.operators || [];
+  var html = '';
+  if (!ops.length) html = '<tr><td colspan="6" style="color:#666;text-align:center">暂无运营账号</td></tr>';
+  ops.forEach(function(o) {
+    var active = o.active !== false;
+    html += '<tr>';
+    html += '<td>' + (o.name || '-') + '</td>';
+    html += '<td><code style="font-size:11px">' + (o.token || '-').substring(0,16) + '...</code> <button class="btn-copy" onclick="copyToken(\'' + o.token + '\')">📋</button></td>';
+    html += '<td><span class="badge ' + (active ? 'badge-active' : 'badge-inactive') + '">' + (active ? '启用' : '停用') + '</span></td>';
+    html += '<td>' + (o.daily_limit || '-') + '</td>';
+    html += '<td>' + (o.valid_days ? new Date(new Date(o.created).getTime() + o.valid_days*86400000).toLocaleDateString('zh-CN') : '-') + '</td>';
+    html += '<td>';
+    html += '<button class="btn-pause" onclick="toggleOp(\'' + o.token + '\',' + !active + ')">' + (active ? '暂停' : '恢复') + '</button> ';
+    html += '<button class="btn-delete" onclick="deleteOp(\'' + o.token + '\')">删除</button>';
+    html += '</td></tr>';
+  });
+  document.getElementById('opList').innerHTML = html;
+}
+
+async function createOp() {
+  var name = document.getElementById('opName').value.trim();
+  if (!name) return toast('请输入姓名');
+  var data = await api('POST', '/api/admin/operators', {
+    name: name,
+    daily_limit: parseInt(document.getElementById('opLimit').value) || 100,
+    valid_days: parseInt(document.getElementById('opDays').value) || 30
+  });
+  if (data.success) {
+    toast('创建成功！Token: ' + data.operator.token);
+    document.getElementById('opName').value = '';
+    loadOps();
+  } else {
+    toast('失败: ' + (data.error || 'unknown'));
+  }
+}
+
+function copyToken(token) {
+  navigator.clipboard.writeText(token).then(function() { toast('已复制!'); });
+}
+
+async function toggleOp(token, active) {
+  await api('PATCH', '/api/admin/operators/' + token, { active: active });
+  loadOps();
+}
+
+async function deleteOp(token) {
+  if (!confirm('确定删除?')) return;
+  await api('DELETE', '/api/admin/operators/' + token);
+  loadOps();
+}
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(function() { t.style.display = 'none'; }, 3000);
+}
+
+loadOps();
+</script>
+</body>
+</html>
