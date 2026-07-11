@@ -38,6 +38,7 @@ const ARK_MODEL = process.env.ARK_MODEL || 'doubao-smart-router-250928';
 // DOWNLOAD & VERSION MANAGEMENT
 // ============================================================
 const CURRENT_VERSION = '1.1.9';
+const DEFAULT_SCRIPTS = require('./default_scripts.js');
 const API = 'https://prolific-adventure-production-9b13.up.railway.app';
 const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
 
@@ -628,10 +629,14 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
     
     if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
 
-    // 获取所有语言的话术
+    // 获取所有语言的话术 (Supabase 或默认)
     const { data: scripts } = await s.from('comment_scripts')
       .select('*')
       .order('success_rate', { ascending: false });
+    
+    // 如果 Supabase 为空，使用默认话术
+    const useDefault = !scripts || scripts.length === 0;
+    console.log('[TASKS] Scripts source:', useDefault ? 'DEFAULT (2000)' : 'DB (' + scripts.length + ')');
 
     if (!taskStore[hostId]) taskStore[hostId] = [];
     const existing = new Set(taskStore[hostId].map(function(t) { return t.profileId; }));
@@ -646,26 +651,40 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
       const whaleRegion = w.region || 'ID';
       const scriptLang = whaleRegion === 'US' ? 'en' : 'id';
       
-      // 筛选匹配语言和 persona 的话术
-      const matching = (scripts || []).filter(function(s) { 
-        return s.lang === scriptLang && s.persona === persona; 
-      });
-      const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
       let script = '';
-      if (pool.length > 0) {
-        const picked = pool[Math.floor(Math.random() * pool.length)];
-        script = (picked.content || '')
+      
+      // 优先从 Supabase 获取，否则使用默认话术
+      if (!useDefault) {
+        // 筛选匹配语言和 persona 的话术
+        const matching = (scripts || []).filter(function(s) { 
+          return s.lang === scriptLang && s.persona === persona; 
+        });
+        const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
+        
+        if (pool.length > 0) {
+          const picked = pool[Math.floor(Math.random() * pool.length)];
+          script = (picked.content || '')
+            .replace(/\{host\}/g, hostName)
+            .replace(/\{whale\}/g, w.nickname || w.username)
+            .replace(/\{name\}/g, w.nickname || w.username);
+        }
+      }
+      
+      // Fallback: 使用默认话术
+      if (!script) {
+        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
           .replace(/\{host\}/g, hostName)
           .replace(/\{whale\}/g, w.nickname || w.username)
           .replace(/\{name\}/g, w.nickname || w.username);
       }
+      
+      // Fallback: 使用内置话术库
       if (!script) {
-        // Fallback 话术
-        if (scriptLang === 'en') {
-          script = 'Hey ' + (w.nickname || w.username) + '! ' + hostName + ' is live now, come check it out! 🔥';
-        } else {
-          script = 'Hai ' + (w.nickname || w.username) + '! ' + hostName + ' lagi live nih, mampir dong! 🔥';
-        }
+        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
+          .replace(/\{host\}/g, hostName)
+          .replace(/\{whale\}/g, w.nickname || w.username)
+          .replace(/\{name\}/g, w.nickname || w.username);
+        console.log('[SCRIPTS] Using default script for', w.username, '(' + scriptLang + ')');
       }
 
       taskStore[hostId].push({
