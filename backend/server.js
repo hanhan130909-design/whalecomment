@@ -187,7 +187,7 @@ function generateSecureToken() {
 // ============================================================
 // ADMIN API: Operator Management
 // ============================================================
-app.post('/api/admin/operators', authAdmin, (req, res) => {
+app.post('/api/admin/operators', authAdmin, async (req, res) => {
   try {
     const { name, quota, permissions, expires_days, email } = req.body || {};
     if (!name) return res.status(400).json({ error: 'Name is required' });
@@ -212,8 +212,18 @@ app.post('/api/admin/operators', authAdmin, (req, res) => {
     saveOperatorsToFile();
     try {
       var s = getSupa();
-      s.from('comment_operators').insert({ email: token + '@op.wc', display_name: name, token: token }).then(function() { console.log('[ADMIN] Supabase saved'); }).catch(function(){});
-    } catch(e) {}
+      var insertData = {
+        email: token + '@op.wc',
+        display_name: name,
+        token: token,
+        daily_limit: quota || 100,
+        active: true,
+        created_at: new Date().toISOString()
+      };
+      var insRes = await s.from('comment_operators').upsert(insertData, { onConflict: 'token' });
+      if (insRes.error) console.log('[ADMIN] Supabase insert error:', insRes.error.message);
+      else console.log('[ADMIN] Supabase saved');
+    } catch(e) { console.log('[ADMIN] Supabase sync failed:', e.message); }
     console.log('[ADMIN] Created operator:', name, 'Token:', token.substring(0, 12) + '...');
     res.json({ success: true, operator: { ...operator, token } });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -232,28 +242,44 @@ app.get('/api/admin/operators', authAdmin, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/operators/:token', authAdmin, (req, res) => {
+app.patch('/api/admin/operators/:token', authAdmin, async (req, res) => {
   try {
     const operator = operatorTokens.get(req.params.token);
     if (!operator) return res.status(404).json({ error: 'Operator not found' });
     const { status, quota, name, expires_days, permissions } = req.body || {};
-    if (status !== undefined) operator.status = status;
+    if (status !== undefined) {
+      operator.status = status;
+      operator.active = (status === 'active');
+    }
     if (quota !== undefined) operator.quota = quota;
     if (name) operator.name = name;
     if (permissions) operator.permissions = permissions;
     if (expires_days !== undefined) operator.expires_at = Date.now() + expires_days * 86400000;
     saveOperatorsToFile();
+    try {
+      var s = getSupa();
+      var updateData = {
+        display_name: operator.name,
+        active: operator.active !== false,
+        daily_limit: operator.quota || 100
+      };
+      await s.from('comment_operators').update(updateData).eq('token', req.params.token);
+    } catch(e) { console.log('[ADMIN] Supabase update sync failed:', e.message); }
     console.log('[ADMIN] Updated operator:', operator.name, 'Status:', operator.status);
     res.json({ success: true, operator });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/operators/:token', authAdmin, (req, res) => {
+app.delete('/api/admin/operators/:token', authAdmin, async (req, res) => {
   try {
     const operator = operatorTokens.get(req.params.token);
     if (!operator) return res.status(404).json({ error: 'Operator not found' });
     operatorTokens.delete(req.params.token);
     saveOperatorsToFile();
+    try {
+      var s = getSupa();
+      await s.from('comment_operators').delete().eq('token', req.params.token);
+    } catch(e) { console.log('[ADMIN] Supabase delete sync failed:', e.message); }
     console.log('[ADMIN] Deleted operator:', operator.name);
     res.json({ success: true, message: 'Operator deleted' });
   } catch(e) { res.status(500).json({ error: e.message }); }
