@@ -82,6 +82,8 @@ app.get('/api/download/latest', (req, res) => {
 // OPERATOR TOKEN PERMISSION SYSTEM
 // ============================================================
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'wc_admin_2026_secret_token';
+if (process.env.ADMIN_TOKEN) console.log('[ADMIN] Using custom ADMIN_TOKEN from env');
+else console.log('[ADMIN] Using default ADMIN_TOKEN: wc_admin_2026_secret_token');
 const operatorTokens = new Map();
 const OPERATORS_FILE = path.join(__dirname, 'operators.json');
 
