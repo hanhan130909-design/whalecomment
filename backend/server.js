@@ -37,7 +37,7 @@ const ARK_MODEL = process.env.ARK_MODEL || 'doubao-smart-router-250928';
 // ============================================================
 // DOWNLOAD & VERSION MANAGEMENT
 // ============================================================
-const CURRENT_VERSION = '1.1.8';
+const CURRENT_VERSION = '1.1.9';
 const API = 'https://prolific-adventure-production-9b13.up.railway.app';
 const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
 
