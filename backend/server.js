@@ -605,14 +605,26 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
     const s = getSupa();
     
     // æå°åºæ¥è¯¢éä¸?(60% ID, 30% MY, 10% US)
-    const [idWhales, myWhales, usWhales] = await Promise.all([
-      s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
-      s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
-      s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
-    ]);
-    
-    // åå¹¶å¹¶æä¹?    let allWhales = [];
-    const idCount = Math.floor(limit * 0.60);
+    // Query whales by region (60% ID, 30% MY, 10% US)
+    let allWhales = [];
+    try {
+      const [idWhales, myWhales, usWhales] = await Promise.all([
+        s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
+        s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
+        s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
+      ]);
+
+      // Merge and shuffle
+      const idCount = Math.floor(limit * 0.60);
+      const myCount = Math.floor(limit * 0.30);
+      const usCount = limit - idCount - myCount;
+
+      if (idWhales.data) allWhales.push(...idWhales.data.slice(0, idCount));
+      if (myWhales.data) allWhales.push(...myWhales.data.slice(0, myCount));
+      if (usWhales.data) allWhales.push(...usWhales.data.slice(0, usCount));
+    } catch(dbErr) {
+      console.log('[TASKS] Supabase whale query failed:', dbErr.message);
+    }
     const myCount = Math.floor(limit * 0.30);
     const usCount = limit - idCount - myCount;
     
