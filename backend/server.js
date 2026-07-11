@@ -37,7 +37,7 @@ const ARK_MODEL = process.env.ARK_MODEL || 'doubao-smart-router-250928';
 // ============================================================
 // DOWNLOAD & VERSION MANAGEMENT
 // ============================================================
-const CURRENT_VERSION = '1.1.7';
+const CURRENT_VERSION = '1.1.8';
 const API = 'https://prolific-adventure-production-9b13.up.railway.app';
 const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
 
@@ -48,7 +48,7 @@ if (!fs.existsSync(RELEASES_DIR)) {
 const downloadStats = {};
 
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
-app.get('/api', (req, res) => { res.json({ service: 'WhaleComment API', version: '1.1.6' }); });
+app.get('/api', (req, res) => { res.json({ service: 'WhaleComment API', version: '1.1.8' }); });
 
 app.get('/api/version/latest', (req, res) => {
   res.json({
