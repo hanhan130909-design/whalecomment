@@ -82,7 +82,6 @@ app.get('/api/download/latest', (req, res) => {
 // OPERATOR TOKEN PERMISSION SYSTEM
 // ============================================================
 const ADMIN_TOKEN = 'wc_admin_2026_secret_token'; // Fixed for client/admin.html compatibility
-app.get('/api/_debug/admin', (req, res) => { res.json({ adminToken: ADMIN_TOKEN, envToken: process.env.ADMIN_TOKEN || null, len: ADMIN_TOKEN.length }); });
 console.log('[ADMIN] Using fixed admin token (env ignored)');
 const operatorTokens = new Map();
 const OPERATORS_FILE = path.join(__dirname, 'operators.json');
