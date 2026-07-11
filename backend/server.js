@@ -37,7 +37,7 @@ const ARK_MODEL = process.env.ARK_MODEL || 'doubao-smart-router-250928';
 // ============================================================
 // DOWNLOAD & VERSION MANAGEMENT
 // ============================================================
-const CURRENT_VERSION = '1.1.9';
+const CURRENT_VERSION = '1.2.0';
 const DEFAULT_SCRIPTS = require('./default_scripts.js');
 const API = 'https://prolific-adventure-production-9b13.up.railway.app';
 const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
@@ -604,15 +604,14 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
     }
     const s = getSupa();
     
-    // 按地区查询金主 (60% ID, 30% MY, 10% US)
+    // 按地区查询金�?(60% ID, 30% MY, 10% US)
     const [idWhales, myWhales, usWhales] = await Promise.all([
       s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
       s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
       s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
     ]);
     
-    // 合并并打乱
-    let allWhales = [];
+    // 合并并打�?    let allWhales = [];
     const idCount = Math.floor(limit * 0.60);
     const myCount = Math.floor(limit * 0.30);
     const usCount = limit - idCount - myCount;
@@ -629,13 +628,12 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
     
     if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
 
-    // 获取所有语言的话术 (Supabase 或默认)
+    // 获取所有语言的话�?(Supabase 或默�?
     const { data: scripts } = await s.from('comment_scripts')
       .select('*')
       .order('success_rate', { ascending: false });
     
-    // 如果 Supabase 为空，使用默认话术
-    const useDefault = !scripts || scripts.length === 0;
+    // 如果 Supabase 为空，使用默认话�?    const useDefault = !scripts || scripts.length === 0;
     console.log('[TASKS] Scripts source:', useDefault ? 'DEFAULT (2000)' : 'DB (' + scripts.length + ')');
 
     if (!taskStore[hostId]) taskStore[hostId] = [];
@@ -653,10 +651,8 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
       
       let script = '';
       
-      // 优先从 Supabase 获取，否则使用默认话术
-      if (!useDefault) {
-        // 筛选匹配语言和 persona 的话术
-        const matching = (scripts || []).filter(function(s) { 
+      // 优先�?Supabase 获取，否则使用默认话�?      if (!useDefault) {
+        // 筛选匹配语言�?persona 的话�?        const matching = (scripts || []).filter(function(s) { 
           return s.lang === scriptLang && s.persona === persona; 
         });
         const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
@@ -678,8 +674,7 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
           .replace(/\{name\}/g, w.nickname || w.username);
       }
       
-      // Fallback: 使用内置话术库
-      if (!script) {
+      // Fallback: 使用内置话术�?      if (!script) {
         script = DEFAULT_SCRIPTS.getRandom(scriptLang)
           .replace(/\{host\}/g, hostName)
           .replace(/\{whale\}/g, w.nickname || w.username)
@@ -741,7 +736,7 @@ app.post('/api/admin/import-scripts', authAdmin, async (req, res) => {
       console.log('[ADMIN] Cleared existing scripts');
     }
     
-    // 批量插入 (每批 100 条)
+    // 批量插入 (每批 100 �?
     const batchSize = 100;
     let imported = 0;
     let failed = 0;
@@ -759,6 +754,58 @@ app.post('/api/admin/import-scripts', authAdmin, async (req, res) => {
     
     console.log('[ADMIN] Imported', imported, 'scripts,', failed, 'failed');
     res.json({ success: true, imported, failed, total: scripts.length });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// UPDATE WHALE REGIONS
+// ============================================================
+app.post('/api/admin/update-whale-regions', authAdmin, async (req, res) => {
+  try {
+    const s = getSupa();
+    
+    // 获取所有金�?    const { data: whales, error } = await s.from('whale_profiles').select('username, region');
+    if (error) return res.status(500).json({ error: error.message });
+    
+    // 地区判断函数
+    function detectRegion(username) {
+      const name = (username || '').toLowerCase();
+      
+      // 印尼特征
+      const idPatterns = [/habib|jack|ahmad|muhammad|febri|putra|bagus|siti|dewi|ratna|rini|ayu|putri|kaede|guardman|bonsai/i];
+      // 马来西亚特征
+      const myPatterns = [/lemon56920|puteraiman|malaysia|kuala|nor|aziz|farah|izzat|hakim|nurul|amirah/i];
+      // 美国特征
+      const usPatterns = [/unstoppable|king|queen|coven|onlyfams|brinn|official|real|the_/i];
+      
+      for (const p of usPatterns) if (p.test(name)) return 'US';
+      for (const p of myPatterns) if (p.test(name)) return 'MY';
+      for (const p of idPatterns) if (p.test(name)) return 'ID';
+      
+      // 默认随机分布
+      const rand = Math.random();
+      if (rand < 0.60) return 'ID';
+      if (rand < 0.90) return 'MY';
+      return 'US';
+    }
+    
+    // 批量更新
+    let updated = 0;
+    for (const w of (whales || [])) {
+      if (w.region) continue; // 已有 region 跳过
+      
+      const newRegion = detectRegion(w.username);
+      const { error: updErr } = await s.from('whale_profiles')
+        .update({ region: newRegion })
+        .eq('username', w.username);
+      
+      if (!updErr) updated++;
+    }
+    
+    console.log('[ADMIN] Updated', updated, 'whale regions');
+    res.json({ success: true, updated, total: whales?.length || 0 });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -844,13 +891,13 @@ function calcPriority(p) {
 
 function addFlavor(script, persona) {
   const em = {
-    challenger: ['⭐','🔥','💪','🎯','✨'],
+    challenger: ['�?,'🔥','💪','🎯','�?],
     vip: ['💎','🌟','🏆','👑','🎉'],
     high_spender: ['💰','🤑','💸','👑','🪙'],
-    curious: ['🤔','❓','💭','🎁','🎈'],
-    active: ['🙋','👋','🤝','✨','🎊'],
+    curious: ['🤔','�?,'💭','🎁','🎈'],
+    active: ['🙋','👋','🤝','�?,'🎊'],
     gift_giver: ['🎁','💝','🌹','🎀','💕'],
-    comprehensive: ['✨','🏆','💕','🙌','🎉']
+    comprehensive: ['�?,'🏆','💕','🙌','🎉']
   };
   const pool = em[persona] || em.comprehensive;
   const sf = ' ' + pool[Math.floor(Math.random() * pool.length)] + pool[Math.floor(Math.random() * pool.length)];
