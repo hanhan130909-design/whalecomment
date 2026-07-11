@@ -626,12 +626,6 @@ app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
       console.log('[TASKS] Supabase whale query failed:', dbErr.message);
     }
     
-    // æä¹±é¡ºåº
-    for (let i = allWhales.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allWhales[i], allWhales[j]] = [allWhales[j], allWhales[i]];
-    }
-    
     if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
 
     // è·åææè¯­è¨çè¯æ?(Supabase æé»è®?
@@ -950,6 +944,17 @@ function getFallback(persona, hostName, whaleName) {
 }
 
 // ============================================================
+// DEBUG: test Supabase scripts query
+app.get('/api/_debug/scripts', async (req, res) => {
+  try {
+    const s = getSupa();
+    const r = await s.from('comment_scripts').select('*').limit(1);
+    res.json({ ok: true, rows: r.data ? r.data.length : 'null', status: r.status });
+  } catch(e) {
+    res.json({ ok: false, err: e.message });
+  }
+});
+
 // TOKEN VERIFICATION & STARTUP
 // ============================================================
 app.get('/api/verify-token', (req, res) => {
