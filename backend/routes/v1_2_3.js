@@ -1,37 +1,32 @@
 // v1.2.3 EXE compatible endpoints
 module.exports = function(app, getSupa, taskStore, operatorTokens) {
-  // Token validation with Supabase fallback
-  app.get('/api/operator/validate', async function(req, res) {
-    var token = req.query.token;
-    if (!token) return res.status(400).json({ valid: false, error: 'Token required' });
-    
-    // Check in-memory first
-    var op = operatorTokens.get(token);
-    if (op) {
-      if (op.active === false) return res.json({ valid: false, error: 'Token suspended' });
-      return res.json({ valid: true, name: op.name, daily_limit: op.daily_limit || 100 });
-    }
-    
-    // Fallback: check Supabase
+  // Sync Supabase operators into in-memory store on startup
+  (async function() {
     try {
       var s = getSupa();
-      var { data } = await s.from('operator_tokens').select('*').eq('token', token).limit(1);
-      if (data && data.length > 0) {
-        var o = data[0];
-        if (o.active === false) return res.json({ valid: false, error: 'Token suspended' });
-        // Cache in memory
-        operatorTokens.set(token, {
-          name: o.name, token: o.token,
-          daily_limit: o.daily_limit || 100,
-          valid_days: o.valid_days || 30,
-          created: o.created, active: o.active
+      var result = await s.from('operator_tokens').select('*');
+      var data = result.data || [];
+      if (data.length) {
+        data.forEach(function(o) {
+          if (o.token && !operatorTokens.has(o.token)) {
+            operatorTokens.set(o.token, {
+              name: o.name, token: o.token,
+              daily_limit: o.daily_limit || 100,
+              valid_days: o.valid_days || 30,
+              quota: o.daily_limit || 100,
+              status: o.active !== false ? 'active' : 'suspended',
+              created: o.created || new Date().toISOString(),
+              active: o.active !== false,
+              permissions: ['comment', 'like'],
+              quota_date: new Date().toISOString().split('T')[0],
+              used_today: 0
+            });
+          }
         });
-        return res.json({ valid: true, name: o.name, daily_limit: o.daily_limit || 100 });
+        console.log('[V1.2.3] Synced ' + data.length + ' operators from Supabase to memory');
       }
-    } catch(e) { console.log('Supabase lookup failed:', e.message); }
-    
-    res.json({ valid: false, error: 'Invalid token' });
-  });
+    } catch(e) { console.log('[V1.2.3] Supabase sync error:', e.message); }
+  })();
 
   app.get('/api/tasks/generate', async function(req, res) {
     try {
@@ -51,7 +46,7 @@ module.exports = function(app, getSupa, taskStore, operatorTokens) {
         taskStore[hostId].push({
           id: 't_' + Date.now() + '_' + count, taskId: 't_' + Date.now() + '_' + count,
           host_id: hostId, profileId: w.username, videoUrl: 'https://www.tiktok.com/@' + w.username,
-          commentText: 'Hai ' + (w.nickname || w.username) + '! Mampir ke live ya \\u{1F525}',
+          commentText: 'Hai ' + (w.nickname || w.username) + '! Mampir ke live ya!',
           status: 'pending', created_at: new Date().toISOString()
         });
         existing.add(w.username); count++;
@@ -59,10 +54,32 @@ module.exports = function(app, getSupa, taskStore, operatorTokens) {
       res.json({ success: true, count: count });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
+
   app.get('/api/hosts/register', function(req, res) {
     var hostId = req.query.host_id;
     if (!hostId) return res.status(400).json({ error: 'host_id required' });
     if (!taskStore[hostId]) taskStore[hostId] = [];
     res.json({ success: true, host_id: hostId, status: 'registered' });
+  });
+
+  app.get('/api/operator/validate', async function(req, res) {
+    var token = req.query.token;
+    if (!token) return res.json({ success: false, error: 'Token required' });
+    var op = operatorTokens.get(token);
+    if (!op) {
+      try {
+        var s = getSupa();
+        var result = await s.from('operator_tokens').select('*').eq('token', token).limit(1);
+        var data = result.data || [];
+        if (data.length > 0) {
+          var o = data[0];
+          if (o.active === false) return res.json({ success: false, error: 'Token suspended' });
+          op = { name: o.name, token: o.token, status: 'active', quota: o.daily_limit || 100, remaining_today: o.daily_limit || 100, permissions: ['comment', 'like'] };
+          operatorTokens.set(token, op);
+        }
+      } catch(e) {}
+    }
+    if (!op || op.status !== 'active') return res.json({ success: false, error: 'Invalid token' });
+    res.json({ success: true, operator: { name: op.name, status: op.status, quota: op.quota || 100, remaining_today: op.remaining_today || 100, permissions: op.permissions || ['comment', 'like'] } });
   });
 };
