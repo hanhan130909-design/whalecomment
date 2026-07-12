@@ -969,6 +969,32 @@ app.get('/api/_debug/generate-test', (req, res) => {
   res.json({ success: true, count: tasks.length, tasks: tasks });
 });
 
+// TEMP: minimal async generate-tasks test
+app.post('/api/_debug/gt', async (req, res) => {
+  try {
+    var token = req.query.token || req.body.token;
+    var auth = operatorTokens.get(token);
+    if (!auth) return res.status(401).json({ error: 'Invalid token' });
+    var hostId = req.params.hostId || 'h_test';
+    var host = hostStore[hostId];
+    var hardcodedWhales = [
+      { username: 'the_real_dk28', nickname: 'DK', region: 'ID', video_url: 'https://www.tiktok.com/@the_real_dk28' },
+      { username: 'sultan_streamer22', nickname: 'Sultan', region: 'MY', video_url: 'https://www.tiktok.com/@sultan_streamer22' },
+      { username: 'billionairebabe', nickname: 'Babe', region: 'US', video_url: 'https://www.tiktok.com/@billionairebabe' }
+    ];
+    var hostName = host ? (host.display_name || host.tiktok_username || 'kita') : 'kita';
+    var tasks = hardcodedWhales.map(function(w) {
+      var lang = (w.region === 'US') ? 'en' : 'id';
+      return { profileId: w.username, videoUrl: w.video_url, script: DEFAULT_SCRIPTS.getRandom(lang).replace(/\{host\}/g, hostName).replace(/\{whale\}/g, w.nickname || w.username), status: 'ready' };
+    });
+    if (hostId) taskStore[hostId] = tasks;
+    res.json({ success: true, count: tasks.length });
+  } catch(e) {
+    console.error('[GT-ERR]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log('WhaleComment API running on port ' + PORT);
   console.log('Supabase: ' + SUPABASE_URL);
