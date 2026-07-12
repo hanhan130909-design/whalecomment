@@ -1,5 +1,38 @@
 // v1.2.3 EXE compatible endpoints
 module.exports = function(app, getSupa, taskStore, operatorTokens) {
+  // Token validation with Supabase fallback
+  app.get('/api/operator/validate', async function(req, res) {
+    var token = req.query.token;
+    if (!token) return res.status(400).json({ valid: false, error: 'Token required' });
+    
+    // Check in-memory first
+    var op = operatorTokens.get(token);
+    if (op) {
+      if (op.active === false) return res.json({ valid: false, error: 'Token suspended' });
+      return res.json({ valid: true, name: op.name, daily_limit: op.daily_limit || 100 });
+    }
+    
+    // Fallback: check Supabase
+    try {
+      var s = getSupa();
+      var { data } = await s.from('operator_tokens').select('*').eq('token', token).limit(1);
+      if (data && data.length > 0) {
+        var o = data[0];
+        if (o.active === false) return res.json({ valid: false, error: 'Token suspended' });
+        // Cache in memory
+        operatorTokens.set(token, {
+          name: o.name, token: o.token,
+          daily_limit: o.daily_limit || 100,
+          valid_days: o.valid_days || 30,
+          created: o.created, active: o.active
+        });
+        return res.json({ valid: true, name: o.name, daily_limit: o.daily_limit || 100 });
+      }
+    } catch(e) { console.log('Supabase lookup failed:', e.message); }
+    
+    res.json({ valid: false, error: 'Invalid token' });
+  });
+
   app.get('/api/tasks/generate', async function(req, res) {
     try {
       var hostId = req.query.host_id || 'h_1783502518392';
