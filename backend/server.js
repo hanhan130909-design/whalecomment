@@ -580,135 +580,111 @@ app.get('/api/tasks/progress', async (req, res) => {
 // ============================================================
 // GENERATE TASKS FROM WHALE_PROFILES
 // ============================================================
-app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
+app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
+  var hostId = req.params.hostId;
+  var token = req.query.token || req.body.token;
+  var limit = parseInt(req.body.limit) || 10;
+
+  var auth = validateOperatorToken(token);
+  if (!auth.valid) return res.status(401).json({ error: auth.error });
+  var op = auth.operator;
+  var used = dailyUsage.get(op.name) || 0;
+  if (used >= op.daily_limit) return res.json({ success: false, error: 'Daily limit reached' });
+
+  var host = hosts.get(hostId);
+  if (!host) return res.status(404).json({ error: 'Host not found' });
+
+  // Query whales by region from Supabase
+  var allWhales = [];
   try {
-    var hostId = req.params.id;
-    if (hostId && !hostId.startsWith('h_')) {
-      for (const opHosts of Object.values(hostStore)) {
-        var found = opHosts.find(function(h) { return h.tiktok_username === hostId; });
-        if (found) { hostId = found.id; break; }
-      }
+    var s = getSupa();
+    var idWhales = await s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100);
+    var myWhales = await s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50);
+    var usWhales = await s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30);
+
+    var idCount = Math.floor(limit * 0.60);
+    var myCount = Math.floor(limit * 0.30);
+    var usCount = limit - idCount - myCount;
+
+    if (idWhales.data) allWhales = allWhales.concat(idWhales.data.slice(0, idCount));
+    if (myWhales.data) allWhales = allWhales.concat(myWhales.data.slice(0, myCount));
+    if (usWhales.data) allWhales = allWhales.concat(usWhales.data.slice(0, usCount));
+  } catch(dbErr) {
+    console.log('[TASKS] DB query failed:', dbErr.message);
+  }
+
+  // Shuffle
+  for (var i = allWhales.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = allWhales[i]; allWhales[i] = allWhales[j]; allWhales[j] = tmp;
+  }
+
+  // Fallback if no whales
+  if (!allWhales.length) {
+    allWhales = [
+      { username: 'the_real_dk28', nickname: 'DK', region: 'ID', video_url: 'https://www.tiktok.com/@the_real_dk28' },
+      { username: 'unstoppable_k1ng', nickname: 'King', region: 'ID', video_url: 'https://www.tiktok.com/@unstoppable_k1ng' },
+      { username: 'toxictasha_2024', nickname: 'Tasha', region: 'ID', video_url: 'https://www.tiktok.com/@toxictasha_2024' }
+    ];
+    allWhales = allWhales.slice(0, limit);
+  }
+
+  // Get scripts
+  var scripts = [];
+  var useDefault = true;
+  try {
+    var s2 = getSupa();
+    var r = await s2.from('comment_scripts').select('*').limit(500);
+    if (r.data && r.data.length > 0) { scripts = r.data; useDefault = false; }
+  } catch(scErr) {
+    console.log('[TASKS] Scripts query failed:', scErr.message);
+  }
+
+  if (!taskStore[hostId]) taskStore[hostId] = [];
+  var existing = new Set(taskStore[hostId].map(function(t) { return t.profileId || t.username || t.whale_username; }));
+  var count = 0;
+  var hostName = host.display_name || host.tiktok_username || 'kita';
+
+  for (var wi = 0; wi < allWhales.length; wi++) {
+    var w = allWhales[wi];
+    if (existing.has(w.username)) continue;
+    if (count >= limit) break;
+
+    var region = w.region || 'ID';
+    var lang = (region === 'US') ? 'en' : 'id';
+    var persona = w.persona || 'comprehensive';
+
+    var pool = [];
+    if (!useDefault && scripts.length > 0) {
+      pool = scripts.filter(function(s) { return s.lang === lang; });
+      if (pool.length === 0) pool = scripts;
     }
-    const { limit: taskLimit } = req.body || {};
-    const limit = Math.min(parseInt(taskLimit) || 30, 30);
-    let host = null;
-    for (const opHosts of Object.values(hostStore)) {
-      host = opHosts.find(function(x) { return x.id === hostId; });
-      if (host) break;
+
+    var scriptText = '';
+    if (pool.length > 0) {
+      var picked = pool[Math.floor(Math.random() * pool.length)];
+      scriptText = (picked.content || '');
+    } else {
+      scriptText = DEFAULT_SCRIPTS.getRandom(lang);
     }
-    if (!host) {
-      host = { id: hostId, display_name: hostId, tiktok_username: hostId };
-      for (const opHosts of Object.values(hostStore)) {
-        if (opHosts.length > 0) { opHosts.push(host); break; }
-      }
-    }
-    const s = getSupa();
-    
-    // æå°åºæ¥è¯¢éä¸?(60% ID, 30% MY, 10% US)
-    // Query whales by region (60% ID, 30% MY, 10% US)
-    let allWhales = [];
-    try {
-      const [idWhales, myWhales, usWhales] = await Promise.all([
-        s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
-        s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
-        s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
-      ]);
 
-      // Merge and shuffle
-      const idCount = Math.floor(limit * 0.60);
-      const myCount = Math.floor(limit * 0.30);
-      const usCount = limit - idCount - myCount;
+    scriptText = scriptText.replace(/\{host\}/g, hostName).replace(/\{whale\}/g, w.nickname || w.username).replace(/\{name\}/g, w.nickname || w.username);
 
-      if (idWhales.data) allWhales.push(...idWhales.data.slice(0, idCount));
-      if (myWhales.data) allWhales.push(...myWhales.data.slice(0, myCount));
-      if (usWhales.data) allWhales.push(...usWhales.data.slice(0, usCount));
-    } catch(dbErr) {
-      console.log('[TASKS] Supabase whale query failed:', dbErr.message);
-    }
-    
-    if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
+    taskStore[hostId].push({
+      profileId: w.username || w.profileId || 'unknown',
+      username: w.username || 'unknown',
+      videoUrl: w.video_url || ('https://www.tiktok.com/@' + (w.username || 'unknown')),
+      script: scriptText,
+      lang: lang,
+      region: region,
+      persona: persona,
+      status: 'pending'
+    });
+    count++;
+  }
 
-    // è·åææè¯­è¨çè¯æ?(Supabase æé»è®?
-    const { data: scripts } = await s.from('comment_scripts')
-      .select('*')
-      .order('success_rate', { ascending: false });
-    
-    // å¦æ Supabase ä¸ºç©ºï¼ä½¿ç¨é»è®¤è¯æ?    const useDefault = !scripts || scripts.length === 0;
-    console.log('[TASKS] Scripts source:', useDefault ? 'DEFAULT (2000)' : 'DB (' + scripts.length + ')');
-
-    if (!taskStore[hostId]) taskStore[hostId] = [];
-    const existing = new Set(taskStore[hostId].map(function(t) { return t.profileId; }));
-    let count = 0;
-
-    for (const w of allWhales) {
-      if (existing.has(w.username)) continue;
-      const persona = w.persona || 'comprehensive';
-      const hostName = host.display_name || host.tiktok_username || 'kita';
-      
-      // æ ¹æ®å°åºéæ©è¯æ¯è¯­è¨
-      const whaleRegion = w.region || 'ID';
-      const scriptLang = whaleRegion === 'US' ? 'en' : 'id';
-      
-      let script = '';
-      
-      // Use Supabase first, fallback to default scripts
-      if (!useDefault) {
-        // Filter matching language and persona
-        const matching = (scripts || []).filter(function(s) { 
-          return s.lang === scriptLang && s.persona === persona; 
-        });
-        const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
-        
-        if (pool.length > 0) {
-          const picked = pool[Math.floor(Math.random() * pool.length)];
-          script = (picked.content || '')
-            .replace(/\{host\}/g, hostName)
-            .replace(/\{whale\}/g, w.nickname || w.username)
-            .replace(/\{name\}/g, w.nickname || w.username);
-        }
-      }
-      
-      // Fallback: ä½¿ç¨é»è®¤è¯æ¯
-      if (!script) {
-        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
-          .replace(/\{host\}/g, hostName)
-          .replace(/\{whale\}/g, w.nickname || w.username)
-          .replace(/\{name\}/g, w.nickname || w.username);
-      }
-      
-      // Fallback: use built-in scripts pool
-      if (!script) {
-        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
-          .replace(/\{host\}/g, hostName)
-          .replace(/\{whale\}/g, w.nickname || w.username)
-          .replace(/\{name\}/g, w.nickname || w.username);
-        console.log('[SCRIPTS] Using default script for', w.username, '(' + scriptLang + ')');
-      }
-
-      taskStore[hostId].push({
-        id: 't_' + Date.now() + '_' + count,
-        taskId: 't_' + Date.now() + '_' + count,
-        host_id: hostId,
-        profileId: w.username,
-        whale_username: w.username,
-        whale_persona: persona,
-        whale_region: whaleRegion,
-        script_lang: scriptLang,
-        commentText: script,
-        videoId: null,
-        videoUrl: 'https://www.tiktok.com/@' + w.username,
-        status: 'pending',
-        priority: w.total_gifts > 1000000 ? 80 : 50,
-        created_at: new Date().toISOString()
-      });
-      existing.add(w.username);
-      count++;
-    }
-    console.log('[TASKS] Generated', count, 'tasks for', hostId, '(ID:', Math.floor(count * 0.6), 'MY:', Math.floor(count * 0.3), 'US:', count - Math.floor(count * 0.6) - Math.floor(count * 0.3) + ')');
-    res.json({ success: true, count, total: allWhales.length, distribution: { ID: idCount, MY: myCount, US: usCount } });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  res.json({ success: true, count: count, total: allWhales.length, source: useDefault ? 'default' : 'db' });
 });
-
 app.post('/api/hosts/:id/regenerate-token', (req, res) => {
   try {
     var crypto = require('crypto');
