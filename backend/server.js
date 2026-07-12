@@ -598,24 +598,29 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
   var host = hosts.get(hostId);
   if (!host) return res.status(404).json({ error: 'Host not found' });
 
-  // Query whales by region from Supabase
+  // Always use hardcoded whale list (no Supabase dependency)
+  var hardcodedWhales = [
+    { username: 'the_real_dk28', nickname: 'DK', region: 'ID', video_url: 'https://www.tiktok.com/@the_real_dk28' },
+    { username: 'unstoppable_k1ng', nickname: 'King', region: 'ID', video_url: 'https://www.tiktok.com/@unstoppable_k1ng' },
+    { username: 'toxictasha_2024', nickname: 'Tasha', region: 'ID', video_url: 'https://www.tiktok.com/@toxictasha_2024' },
+    { username: 'blessedqueen_x', nickname: 'Queen', region: 'ID', video_url: 'https://www.tiktok.com/@blessedqueen_x' },
+    { username: 'goldenboy_donatello', nickname: 'Don', region: 'ID', video_url: 'https://www.tiktok.com/@goldenboy_donatello' },
+    { username: 'sultan_streamer22', nickname: 'Sultan', region: 'MY', video_url: 'https://www.tiktok.com/@sultan_streamer22' },
+    { username: 'malay_royalz', nickname: 'Roy', region: 'MY', video_url: 'https://www.tiktok.com/@malay_royalz' },
+    { username: 'billionairebabe', nickname: 'Babe', region: 'US', video_url: 'https://www.tiktok.com/@billionairebabe' },
+    { username: 'nyc_bigballer', nickname: 'NYC', region: 'US', video_url: 'https://www.tiktok.com/@nyc_bigballer' },
+    { username: 'richvibes_only', nickname: 'Rich', region: 'ID', video_url: 'https://www.tiktok.com/@richvibes_only' }
+  ];
+  var idCount = Math.floor(limit * 0.60);
+  var myCount = Math.floor(limit * 0.30);
+  var usCount = limit - idCount - myCount;
   var allWhales = [];
-  try {
-    var s = getSupa();
-    var idWhales = await s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100);
-    var myWhales = await s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50);
-    var usWhales = await s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30);
-
-    var idCount = Math.floor(limit * 0.60);
-    var myCount = Math.floor(limit * 0.30);
-    var usCount = limit - idCount - myCount;
-
-    if (idWhales.data) allWhales = allWhales.concat(idWhales.data.slice(0, idCount));
-    if (myWhales.data) allWhales = allWhales.concat(myWhales.data.slice(0, myCount));
-    if (usWhales.data) allWhales = allWhales.concat(usWhales.data.slice(0, usCount));
-  } catch(dbErr) {
-    console.log('[TASKS] DB query failed:', dbErr.message);
-  }
+  var idWhales = hardcodedWhales.filter(function(w){ return w.region === 'ID'; });
+  var myWhales = hardcodedWhales.filter(function(w){ return w.region === 'MY'; });
+  var usWhales = hardcodedWhales.filter(function(w){ return w.region === 'US'; });
+  allWhales = allWhales.concat(idWhales.slice(0, idCount));
+  allWhales = allWhales.concat(myWhales.slice(0, myCount));
+  allWhales = allWhales.concat(usWhales.slice(0, usCount));
 
   // Shuffle
   for (var i = allWhales.length - 1; i > 0; i--) {
