@@ -26,6 +26,10 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sxsmjfkxllepntgzfqbl.s
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 let supa = null;
 function getSupa() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.log('[getSupa] WARNING: SUPABASE_URL or SUPABASE_KEY not set, using anon client');
+    return getSupaAnon();
+  }
   if (!supa) supa = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   return supa;
 }
