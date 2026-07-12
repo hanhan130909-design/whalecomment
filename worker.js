@@ -1,7 +1,7 @@
 // WhaleComment Worker — runs in Electron child process
 var hostId = process.argv[2] || 'h_1783502518392';
 var token = process.argv[3] || '';
-var API = 'https://prolific-adventure-production-9b13.up.railway.app';
+var API = 'https://whalecomment-backend.onrender.com';
 var path = require('path');
 var fs = require('fs');
 
