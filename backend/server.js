@@ -596,7 +596,7 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
   var used = dailyUsage.get(op.name) || 0;
   if (used >= op.daily_limit) return res.json({ success: false, error: 'Daily limit reached' });
 
-  var host = hosts.get(hostId);
+  var host = hostStore[hostId];
   if (!host) return res.status(404).json({ error: 'Host not found' });
 
   // Always use hardcoded whale list (no Supabase dependency)
