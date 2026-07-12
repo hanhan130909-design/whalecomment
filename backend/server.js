@@ -89,6 +89,7 @@ app.get('/api/download/latest', (req, res) => {
 const ADMIN_TOKEN = 'wc_admin_2026_secret_token'; // Fixed for client/admin.html compatibility
 console.log('[ADMIN] Using fixed admin token (env ignored)');
 const operatorTokens = new Map();
+const dailyUsage = new Map();
 const OPERATORS_FILE = path.join(__dirname, 'operators.json');
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4c21qZmt4bGxlcG50Z3pxYmwiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTY1MTg2NjAyMCwiZXhwIjoxOTY3NDQyMDIwfQ.36-SD3W7c1rT94rH5XMB7PbQ7K8LvSsLXLYjvjapolU0';
@@ -593,7 +594,8 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'Invalid token' });
   if (auth.active === false) return res.status(403).json({ error: 'Token suspended' });
   var op = auth;
-  var used = dailyUsage.get(op.name) || 0;
+  var used = 0;
+  try { used = (dailyUsage && dailyUsage.get ? dailyUsage.get(op.name) : 0) || 0; } catch(e) { used = 0; }
   if (used >= op.daily_limit) return res.json({ success: false, error: 'Daily limit reached' });
 
   var host = hostStore[hostId];
