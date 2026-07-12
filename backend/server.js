@@ -945,6 +945,30 @@ app.get('/api/verify-token', (req, res) => {
   res.json({ valid: true, name: op.name, daily_limit: op.daily_limit });
 });
 
+app.get('/api/_debug/generate-test', (req, res) => {
+  var hostId = req.query.hostId || 'h_test';
+  var token = req.query.token || '';
+  var auth = operatorTokens.get(token);
+  if (!auth) return res.status(401).json({ error: 'Invalid token' });
+  var host = hostStore[hostId];
+  if (!host) return res.status(404).json({ error: 'Host not found' });
+  var hardcodedWhales = [
+    { username: 'the_real_dk28', nickname: 'DK', region: 'ID', video_url: 'https://www.tiktok.com/@the_real_dk28' },
+    { username: 'unstoppable_k1ng', nickname: 'King', region: 'ID', video_url: 'https://www.tiktok.com/@unstoppable_k1ng' },
+    { username: 'toxictasha_2024', nickname: 'Tasha', region: 'ID', video_url: 'https://www.tiktok.com/@toxictasha_2024' },
+    { username: 'sultan_streamer22', nickname: 'Sultan', region: 'MY', video_url: 'https://www.tiktok.com/@sultan_streamer22' },
+    { username: 'billionairebabe', nickname: 'Babe', region: 'US', video_url: 'https://www.tiktok.com/@billionairebabe' }
+  ];
+  var hostName = host.display_name || host.tiktok_username || 'kita';
+  var tasks = hardcodedWhales.slice(0, 3).map(function(w) {
+    var lang = (w.region === 'US') ? 'en' : 'id';
+    var script = DEFAULT_SCRIPTS.getRandom(lang).replace(/\{host\}/g, hostName).replace(/\{whale\}/g, w.nickname || w.username);
+    return { profileId: w.username, username: w.username, videoUrl: w.video_url, script: script, lang: lang, status: 'ready' };
+  });
+  taskStore[hostId] = tasks;
+  res.json({ success: true, count: tasks.length, tasks: tasks });
+});
+
 app.listen(PORT, () => {
   console.log('WhaleComment API running on port ' + PORT);
   console.log('Supabase: ' + SUPABASE_URL);
