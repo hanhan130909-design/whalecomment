@@ -639,16 +639,9 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
     allWhales = allWhales.slice(0, limit);
   }
 
-  // Get scripts
-  var scripts = [];
+  // Use only DEFAULT_SCRIPTS (no Supabase query to avoid hangs)
   var useDefault = true;
-  try {
-    var s2 = getSupa();
-    var r = await s2.from('comment_scripts').select('*').limit(500);
-    if (r.data && r.data.length > 0) { scripts = r.data; useDefault = false; }
-  } catch(scErr) {
-    console.log('[TASKS] Scripts query failed:', scErr.message);
-  }
+  var scripts = [];
 
   if (!taskStore[hostId]) taskStore[hostId] = [];
   var existing = new Set(taskStore[hostId].map(function(t) { return t.profileId || t.username || t.whale_username; }));
@@ -693,7 +686,7 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
     count++;
   }
 
-  res.json({ success: true, count: count, total: allWhales.length, source: useDefault ? 'default' : 'db' });
+  res.json({ success: true, count: count, total: allWhales.length, source: 'default' });
 });
 app.post('/api/hosts/:id/regenerate-token', (req, res) => {
   try {
