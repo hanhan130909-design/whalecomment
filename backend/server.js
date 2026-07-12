@@ -589,9 +589,10 @@ app.post('/api/hosts/:hostId/generate-tasks', async (req, res) => {
   var token = req.query.token || req.body.token;
   var limit = parseInt(req.body.limit) || 10;
 
-  var auth = validateOperatorToken(token);
-  if (!auth.valid) return res.status(401).json({ error: auth.error });
-  var op = auth.operator;
+  var auth = operatorTokens.get(token);
+  if (!auth) return res.status(401).json({ error: 'Invalid token' });
+  if (auth.active === false) return res.status(403).json({ error: 'Token suspended' });
+  var op = auth;
   var used = dailyUsage.get(op.name) || 0;
   if (used >= op.daily_limit) return res.json({ success: false, error: 'Daily limit reached' });
 
