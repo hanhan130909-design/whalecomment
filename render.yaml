@@ -1,6 +1,7 @@
 # Render Blueprint — WhaleComment Backend
 # Deploy: New → Blueprint → connect this repo → selects this file
 # Render auto-detects: Node.js, rootDir=backend/, start=node server.js
+# Updated: 2026-07-12 — fixed generate-tasks route + app. prefix + app.app. bug
 
 services:
   - type: web
