@@ -2,38 +2,77 @@
 <html><head><meta charset="UTF-8"><title>WhaleComment</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Microsoft YaHei',sans-serif;background:#0f0f1a;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:#0f0f1a;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
 .c{width:560px;padding:24px}
-h1{text-align:center;color:#ff2d55;margin-bottom:20px}
-.row{display:flex;gap:8px;margin-bottom:12px}
+h1{text-align:center;color:#ff2d55;margin-bottom:4px;font-size:22px}
+.ver{text-align:center;color:#666;font-size:11px;margin-bottom:16px}
+.lang{display:flex;justify-content:center;gap:6px;margin-bottom:16px}
+.lang button{padding:3px 12px;border:1px solid #333;border-radius:14px;background:transparent;color:#888;cursor:pointer;font-size:11px}
+.lang button.on{background:#ff2d55;color:#fff;border-color:#ff2d55}
+.row{display:flex;gap:8px;margin-bottom:10px}
 input{flex:1;padding:10px;border:1px solid #252540;border-radius:6px;background:#1a1a2e;color:#fff;font-size:14px}
 button{padding:10px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-verify{background:#8b5cf6;color:#fff;flex:1}
 .btn-start{background:#ff2d55;color:#fff;flex:1}
 .btn-stop{background:#333;color:#ccc;flex:1}
 button:disabled{opacity:0.4;cursor:not-allowed}
-#log{background:#0d1117;border:1px solid #252540;border-radius:8px;padding:12px;height:300px;overflow-y:auto;font:12px Consolas,monospace;white-space:pre-wrap;margin-top:12px}
-.info{color:#58a6ff}.ok{color:#3fb950}.err{color:#ff2d55}
+#log{background:#0d1117;border:1px solid #252540;border-radius:8px;padding:12px;height:280px;overflow-y:auto;font:12px Consolas,monospace;white-space:pre-wrap;margin-top:12px}
+.info{color:#58a6ff}.ok{color:#3fb950}.err{color:#ff2d55}.warn{color:#d2991d}
 </style></head><body>
 <div class="c">
 <h1>🐋 WhaleComment</h1>
-<div class="row">
-<input id="host" placeholder="Host ID (dari Dashboard)" value="h_1783502518392">
+<div class="ver">v1.3.0</div>
+<div class="lang">
+<button onclick="L('zh')">中文</button>
+<button class="on" onclick="L('id')">Bahasa</button>
+<button onclick="L('en')">English</button>
 </div>
+<div class="row"><input id="host" placeholder="Host ID / TikTok username"></div>
+<div class="row"><input id="token" placeholder="Token Operator"></div>
 <div class="row">
-<input id="token" placeholder="Host Token (dari Dashboard)" style="font-family:monospace;font-size:12px">
-</div>
-<div class="row">
-<button class="btn-start" id="btnStart" onclick="start()">▶ Start</button>
+<button class="btn-verify" id="btnVerify" onclick="verify()">Verifikasi Token</button>
+<button class="btn-start" id="btnStart" onclick="start()" disabled>▶ Start</button>
 <button class="btn-stop" id="btnStop" onclick="stop()" disabled>⏹ Stop</button>
 </div>
-<div id="log"><span class="info">Siap. Masukkan Host ID lalu klik Start.</span></div>
+<div id="log"><span class="info">Masukkan Host ID dan Token, lalu klik Verifikasi.</span></div>
 </div>
 <script>
-var el=document.getElementById('log'),startBtn=document.getElementById('btnStart'),stopBtn=document.getElementById('btnStop');
+var T={
+zh:{title:'TikTok 自动评论',host:'Host ID / TikTok用户名',token:'运营Token',verify:'验证Token',start:'▶ 开始',stop:'⏹ 停止',ready:'输入Host ID和Token，点验证。',verifying:'验证中...',ok:'✅ 验证通过！点开始。',fail:'❌ 验证失败',errConn:'连接失败'},
+id:{title:'Komentar Otomatis TikTok',host:'Host ID / username TikTok',token:'Token Operator',verify:'Verifikasi Token',start:'▶ Mulai',stop:'⏹ Stop',ready:'Masukkan Host ID dan Token, klik Verifikasi.',verifying:'Memverifikasi...',ok:'✅ Terverifikasi! Klik Mulai.',fail:'❌ Gagal verifikasi',errConn:'Gagal koneksi'},
+en:{title:'TikTok Auto Comment',host:'Host ID / TikTok username',token:'Operator Token',verify:'Verify Token',start:'▶ Start',stop:'⏹ Stop',ready:'Enter Host ID and Token, click Verify.',verifying:'Verifying...',ok:'✅ Verified! Click Start.',fail:'❌ Verification failed',errConn:'Connection failed'}
+};
+var lang='id';
+function L(l){lang=l;document.querySelectorAll('.lang button').forEach(function(b,i){b.className=(['zh','id','en'][i]===l?'on':'')});U()}
+function U(){var t=T[lang];
+document.getElementById('host').placeholder=t.host;
+document.getElementById('token').placeholder=t.token;
+document.getElementById('btnVerify').textContent=t.verify;
+document.getElementById('btnStart').textContent=t.start;
+document.getElementById('btnStop').textContent=t.stop;
+document.getElementById('log').innerHTML='<span class="info">'+t.ready+'</span>';
+document.getElementById('btnStart').disabled=true;document.getElementById('btnStop').disabled=true;document.getElementById('btnVerify').disabled=false;
+}
+U();
+var el=document.getElementById('log');
 function add(t,c){var s=document.createElement('span');s.className=c||'info';s.textContent=t;el.appendChild(s);el.scrollTop=el.scrollHeight}
-window.api.onLog(function(t){var l=t.toLowerCase();add(t,l.includes('error')||l.includes('err')?'err':l.includes('ok')||l.includes('total')?'ok':'info')});
-window.api.onDone(function(){startBtn.disabled=false;stopBtn.disabled=true;add('\n-- Selesai --\n','info')});
-async function start(){el.innerHTML='';add('Starting...\n','info');startBtn.disabled=true;stopBtn.disabled=false;var hid = document.getElementById('host').value; var tok = document.getElementById('token').value; await window.api.start(hid + ' ' + tok)}
-async function stop(){add('Stopping...\n','info');await window.api.stop();startBtn.disabled=false;stopBtn.disabled=true}
+async function verify(){
+var token=document.getElementById('token').value.trim();
+if(!token){add(T[lang].errConn+'\n','err');return}
+add(T[lang].verifying+'\n','info');document.getElementById('btnVerify').disabled=true;
+try{
+var r=await fetch('https://whalecomment-backend.onrender.com/api/operator/validate?token='+encodeURIComponent(token));
+var d=await r.json();
+if(d.success){add(T[lang].ok+'\n','ok');document.getElementById('btnStart').disabled=false;}
+else{add(T[lang].fail+': '+(d.error||'')+'\n','err');document.getElementById('btnVerify').disabled=false;}
+}catch(e){add(T[lang].errConn+'\n','err');document.getElementById('btnVerify').disabled=false}
+}
+async function start(){
+var host=document.getElementById('host').value.trim()||'rachelliyagtha03';
+var token=document.getElementById('token').value.trim();
+add('Starting...\n','info');document.getElementById('btnStart').disabled=true;document.getElementById('btnStop').disabled=false;
+await window.api.start(host+' '+token);
+}
+async function stop(){add('Stopping...\n','warn');await window.api.stop();document.getElementById('btnStart').disabled=false;document.getElementById('btnStop').disabled=true;add('Done.\n','info')}
 </script>
 </body></html>
