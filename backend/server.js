@@ -1,9 +1,6 @@
-/**
- * WhaleComment Backend API
- */
+/** WhaleComment Backend v1.2.3 - NO EXTERNAL DEPENDENCIES */
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
@@ -11,952 +8,467 @@ const fs = require('fs');
 const PORT = process.env.PORT || 3102;
 const app = express();
 
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey');
-  res.header('Access-Control-Allow-Credentials', 'true');
+app.use(function(req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,apikey');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sxsmjfkxllepntgzfqbl.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 let supa = null;
+
 function getSupa() {
-  if (!supa) supa = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  if (!SUPABASE_URL || !SUPABASE_KEY) return getSupaAnon();
+  if (!supa) supa = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
   return supa;
 }
 
-const ARK_API_KEY = process.env.ARK_API_KEY || '';
-const ARK_BASE_URL = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
-const ARK_MODEL = process.env.ARK_MODEL || 'doubao-smart-router-250928';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4c21qZmt4bGxlcG50Z3pxYmwiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTY1MTg2NjAyMCwiZXhwIjoxOTY3NDQyMDIwfQ.36-SD3W7c1rT94rH5XMB7PbQ7K8LvSsLXLYjvjapolU0';
+let supaAnon = null;
 
-// ============================================================
-// DOWNLOAD & VERSION MANAGEMENT
-// ============================================================
-const CURRENT_VERSION = '1.2.0';
-const DEFAULT_SCRIPTS = require('./default_scripts.js');
-const API = 'https://prolific-adventure-production-9b13.up.railway.app';
-const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
-
-if (!fs.existsSync(RELEASES_DIR)) {
-  fs.mkdirSync(RELEASES_DIR, { recursive: true });
+function getSupaAnon() {
+  if (!supaAnon) supaAnon = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
+  return supaAnon;
 }
 
-const downloadStats = {};
+const CURRENT_VERSION = '1.2.3';
+const RELEASES_DIR = path.join(__dirname, 'public', 'releases');
+if (!fs.existsSync(RELEASES_DIR)) fs.mkdirSync(RELEASES_DIR, { recursive: true });
 
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
-app.get('/api', (req, res) => { res.json({ service: 'WhaleComment API', version: '1.1.8' }); });
+// INLINE SCRIPTS
+var SCRIPTS_ID = [
+  'Kak {whale}, {host} lagi live nih! Gas terus !',
+  'Eh jagoan! {host} butuh support kamu nih !',
+  'Kak {whale} special guest kita! {host} ada surprise buat kamu !',
+  'VIP alert! {host} nungguin kamu nih Kak {whale} !',
+  'Kak {whale}, {host} lagi mega live! Ada gift spesial !',
+  'Sultan {whale}, {host} live sekarang! Hadiah besar menanti !',
+  '{whale}, {host} ada sesuatu yang bikin penasaran nih !',
+  'Penasaran? {host} ada surprise spesial! Cek sekarang !',
+  '{host} kangen sama kamu Kak {whale}! Mampir dong !',
+  'Bestie {whale}! {host} lagi live, rame banget !',
+  'Kak {whale} baik hati! {host} pengen kasih shoutout buat kamu !',
+  'Wow {whale}, {host} live sekarang! Gift kamu selalu bikin dia senang !',
+  'Kak {whale}, {host} lagi live seru! Mampir yuk !',
+  '{host} live sekarang Kak {whale}! Jangan ketinggalan !',
+  'Yuk mampir ke live {host}! Ditunggu ya !',
+  'Jangan lupa mampir ke live {host} ya Kak {whale} !'
+];
 
-app.get('/api/version/latest', (req, res) => {
+var SCRIPTS_EN = [
+  "Hey {whale}! {host} is live right now! Come hang out !",
+  "What is up {whale}! {host} needs your support in the live stream !",
+  "Hey {whale}! You are our special guest tonight on {host} live !",
+  "VIP alert! {host} has been waiting for you, {whale} !",
+  "Hey {whale}! {host} is doing a mega live stream with special gifts !",
+  "Sultan {whale}! {host} is live right now! Big prizes await !",
+  "Hey {whale}! {host} has something exciting in store for you !",
+  "Curious? {host} is live with amazing surprises! Check it out !",
+  "Hey {whale}! {host} misses you! Come hang out !",
+  "Bestie {whale}! {host} is live and the vibes are amazing !",
+  "Hey {whale}! {host} wants to give you a special shoutout !",
+  "Wow {whale}! {host} is live right now! Your gifts always make their day !",
+  "Hey {whale}! Come join {host} live stream! Let us go !",
+  "{host} is live right now, {whale}! Do not miss out !",
+  "Come hang out at {host} live! See you there !",
+  "Do not forget to check out {host} live, {whale} !"
+];
+
+var WHALES = [
+  { username: 'the_real_dk28', nickname: 'DK', region: 'ID' },
+  { username: 'unstoppable_k1ng', nickname: 'King', region: 'ID' },
+  { username: 'toxictasha_2024', nickname: 'Tasha', region: 'ID' },
+  { username: 'blessedqueen_x', nickname: 'Queen', region: 'ID' },
+  { username: 'goldenboy_donatello', nickname: 'Don', region: 'ID' },
+  { username: 'sultan_streamer22', nickname: 'Sultan', region: 'MY' },
+  { username: 'malay_royalz', nickname: 'Roy', region: 'MY' },
+  { username: 'billionairebabe', nickname: 'Babe', region: 'US' },
+  { username: 'nyc_bigballer', nickname: 'NYC', region: 'US' },
+  { username: 'richvibes_only', nickname: 'Rich', region: 'ID' }
+];
+
+function getScript(lang, hostName, whaleName) {
+  var pool = lang === 'en' ? SCRIPTS_EN : SCRIPTS_ID;
+  var s = pool[Math.floor(Math.random() * pool.length)];
+  return s.replace(/\{host\}/g, hostName || 'kita').replace(/\{whale\}/g, whaleName || 'Kak');
+}
+
+// ROUTES
+app.get('/', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
+app.get('/api', function(req, res) { res.json({ service: 'WhaleComment API', version: CURRENT_VERSION }); });
+app.get('/api/version/latest', function(req, res) {
   res.json({
     success: true,
     version: CURRENT_VERSION,
     releaseDate: new Date().toISOString(),
     downloadUrl: 'https://github.com/hanhan130909-design/whalecomment/releases/download/v1.1.7/WhaleComment-1.1.7-Portable.zip',
-    releaseNotes: [
-      'BUG FIX: likeVideo() found the like button but NEVER clicked it - like count stuck at 0',
-      'Fixed: now executes real page.click() on like button + verifies red fill (#fe2c55) after click',
-      'Commenting logic unchanged (v1.1.6 was correct)'
-    ],
     forceUpdate: false
   });
 });
-
-app.get('/api/download/latest', (req, res) => {
-  const operatorName = req.query.operator || 'unknown';
-  const downloadKey = operatorName + '_' + new Date().toISOString().split('T')[0];
-  downloadStats[downloadKey] = (downloadStats[downloadKey] || 0) + 1;
-  console.log('[DOWNLOAD]', operatorName, 'downloaded version', CURRENT_VERSION);
-
-  const portableZip = path.join(RELEASES_DIR, 'WhaleComment-1.1.7-Portable.zip');
-  if (fs.existsSync(portableZip)) {
-    return res.download(portableZip, 'WhaleComment-1.1.6-Portable.zip');
-  }
-  res.status(404).json({ error: 'Download file not found', version: CURRENT_VERSION });
+app.get('/api/download/latest', function(req, res) {
+  var portableZip = path.join(RELEASES_DIR, 'WhaleComment-1.1.7-Portable.zip');
+  if (fs.existsSync(portableZip)) return res.download(portableZip);
+  res.status(404).json({ error: 'Download file not found' });
+});
+app.get('/api/_debug/status', function(req, res) {
+  res.json({
+    version: CURRENT_VERSION,
+    operators: operatorTokens.size,
+    hostKeys: Object.keys(hostStore),
+    taskKeys: Object.keys(taskStore),
+    uptime: Math.floor(process.uptime())
+  });
 });
 
-// ============================================================
-// OPERATOR TOKEN PERMISSION SYSTEM
-// ============================================================
-const ADMIN_TOKEN = 'wc_admin_2026_secret_token'; // Fixed for client/admin.html compatibility
-console.log('[ADMIN] Using fixed admin token (env ignored)');
+const ADMIN_TOKEN = 'wc_admin_2026_secret_token';
 const operatorTokens = new Map();
 const OPERATORS_FILE = path.join(__dirname, 'operators.json');
 
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4c21qZmt4bGxlcG50Z3pxYmwiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTY1MTg2NjAyMCwiZXhwIjoxOTY3NDQyMDIwfQ.36-SD3W7c1rT94rH5XMB7PbQ7K8LvSsLXLYjvjapolU0';
-let supaAnon = null;
-function getSupaAnon() {
-  if (!supaAnon) supaAnon = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  return supaAnon;
-}
-
-(async function loadOperators() {
-  try {
-    var s = getSupaAnon();
-    var r = await s.from('comment_operators').select('*');
-    if (r.data && r.data.length) {
-      r.data.forEach(function(o) {
-        if (o.token) {
-          var validDays = o.valid_days || 30;
-          var created = new Date(o.created_at || Date.now());
-          var expiresAt = new Date(created.getTime() + validDays * 86400000);
-          operatorTokens.set(o.token, {
-            id: o.id,
-            name: o.display_name || o.name || 'Operator',
-            token: o.token,
-            quota: o.daily_limit || o.quota || 100,
-            daily_limit: o.daily_limit || o.quota || 100,
-            valid_days: validDays,
-            created: created.toISOString(),
-            expires_at: expiresAt.toISOString(),
-            status: (o.active === false) ? 'suspended' : 'active',
-            used_today: 0,
-            remaining_today: o.daily_limit || o.quota || 100,
-            permissions: o.permissions || ['comment', 'like'],
-            active: o.active !== false
-          });
-        }
-      });
-      console.log('[ADMIN] Loaded', r.data.length, 'operators from Supabase');
-    }
-  } catch(e) { console.log('[ADMIN] Supabase load failed:', e.message); }
-
+// Load operators asynchronously
+getSupaAnon().from('comment_operators').select('*').then(function(r) {
+  if (r.data && r.data.length) {
+    r.data.forEach(function(o) {
+      if (o.token) {
+        var vd = o.valid_days || 30;
+        var created = new Date(o.created_at || Date.now());
+        var expiresAt = new Date(created.getTime() + vd * 86400000);
+        operatorTokens.set(o.token, {
+          id: o.id,
+          name: o.display_name || o.name || 'Operator',
+          token: o.token,
+          quota: o.daily_limit || o.quota || 100,
+          daily_limit: o.daily_limit || o.quota || 100,
+          valid_days: vd,
+          created: created.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          status: (o.active === false) ? 'suspended' : 'active',
+          used_today: 0,
+          remaining_today: o.daily_limit || o.quota || 100,
+          permissions: o.permissions || ['comment', 'like'],
+          active: o.active !== false
+        });
+      }
+    });
+  }
+  console.log('[ADMIN] Loaded', operatorTokens.size, 'operators from Supabase');
+}).catch(function(e) {
+  console.log('[ADMIN] Supabase load failed:', e.message);
+}).finally(function() {
   try {
     if (fs.existsSync(OPERATORS_FILE)) {
       var data = JSON.parse(fs.readFileSync(OPERATORS_FILE, 'utf8'));
       if (Array.isArray(data)) {
         data.forEach(function(op) {
           if (op.token && !operatorTokens.has(op.token)) {
-            if (!op.expires_at && op.valid_days && op.created) {
-              var created = new Date(op.created);
-              if (!isNaN(created.getTime())) {
-                op.expires_at = new Date(created.getTime() + op.valid_days * 86400000).toISOString();
-              }
-            }
             operatorTokens.set(op.token, op);
           }
         });
-        console.log('[ADMIN] File fallback: total', operatorTokens.size, 'operators');
       }
     }
-  } catch(e) { console.log('[ADMIN] File error:', e.message); }
+  } catch(ex) {}
   console.log('[ADMIN] Operators ready:', operatorTokens.size);
-})();
+});
 
 function saveOperatorsToFile() {
   try {
-    fs.writeFileSync(OPERATORS_FILE, JSON.stringify(Array.from(operatorTokens.values()), null, 2), 'utf8');
-  } catch(e) { console.log('[ADMIN] File save error:', e.message); }
+    fs.writeFileSync(OPERATORS_FILE, JSON.stringify(Array.from(operatorTokens.values()), null, 2));
+  } catch(e) {}
 }
 
 function authAdmin(req, res, next) {
-  const token = req.headers['authorization'] || req.headers['x-admin-token'] || req.query.admin_token;
-  if (!token || token !== ADMIN_TOKEN) return res.status(403).json({ error: 'Admin access required' });
+  var tok = req.headers['authorization'] || req.headers['x-admin-token'] || req.query.admin_token;
+  if (!tok || tok !== ADMIN_TOKEN) return res.status(403).json({ error: 'Admin access required' });
   next();
 }
 
 function validateOperatorToken(req, res, next) {
-  const token = req.query.token || req.headers['x-auth-token'] || req.body && req.body.token;
-  if (!token) return res.status(401).json({ error: 'Token required', code: 'TOKEN_REQUIRED' });
-  const operator = operatorTokens.get(token);
-  if (!operator) return res.status(403).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
-  if (operator.active === false) return res.status(403).json({ error: 'Token suspended', code: 'TOKEN_SUSPENDED' });
-  if (operator.valid_days && operator.created) {
-    var created = new Date(operator.created);
-    if (!isNaN(created.getTime())) {
-      var expires = new Date(created.getTime() + operator.valid_days * 86400000);
-      if (Date.now() > expires.getTime()) {
-        operator.active = false;
-        saveOperatorsToFile();
-        return res.status(403).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
-      }
-    }
-  }
-  req.operator = operator;
-  req.operatorToken = token;
+  var tok = req.query.token || req.headers['x-auth-token'] || (req.body && req.body.token);
+  if (!tok) return res.status(401).json({ error: 'Token required' });
+  var op = operatorTokens.get(tok);
+  if (!op) return res.status(403).json({ error: 'Invalid token' });
+  if (op.active === false) return res.status(403).json({ error: 'Token suspended' });
+  req.operator = op;
+  req.operatorToken = tok;
   next();
 }
 
-function generateSecureToken() {
-  const crypto = require('crypto');
-  return 'wc_op_' + crypto.randomBytes(24).toString('hex');
+function genToken() {
+  return 'wc_op_' + require('crypto').randomBytes(24).toString('hex');
 }
 
-// ============================================================
-// ADMIN API: Operator Management
-// ============================================================
-app.post('/api/admin/operators', authAdmin, async (req, res) => {
-  try {
-    const { name, quota, permissions, expires_days, email } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'Name is required' });
-    const token = generateSecureToken();
-    const expiresDays = expires_days || 30;
-    const operator = {
-      id: 'op_' + Date.now(),
-      name, email: email || '', token,
-      status: 'active',
-      quota: quota || 100,
-      used_today: 0,
-      quota_date: new Date().toISOString().split('T')[0],
-      total_used: 0,
-      permissions: permissions || ['comment', 'like'],
-      created_at: Date.now(),
-      expires_at: Date.now() + expiresDays * 86400000,
-      last_active: null,
-      hosts: [],
-      metadata: {}
-    };
-    operatorTokens.set(token, operator);
-    saveOperatorsToFile();
-    try {
-      var s = getSupa();
-      var insertData = {
-        email: token + '@op.wc',
-        display_name: name,
-        token: token,
-        daily_limit: quota || 100,
-        active: true,
-        created_at: new Date().toISOString()
-      };
-      var insRes = await s.from('comment_operators').upsert(insertData, { onConflict: 'token' });
-      if (insRes.error) console.log('[ADMIN] Supabase insert error:', insRes.error.message);
-      else console.log('[ADMIN] Supabase saved');
-    } catch(e) { console.log('[ADMIN] Supabase sync failed:', e.message); }
-    console.log('[ADMIN] Created operator:', name, 'Token:', token.substring(0, 12) + '...');
-    res.json({ success: true, operator: { ...operator, token } });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/admin/operators', authAdmin, (req, res) => {
-  try {
-    const list = Array.from(operatorTokens.entries()).map(([token, op]) => ({
-      name: op.name, token: token,
-      daily_limit: op.daily_limit || 100,
-      valid_days: op.valid_days || 30,
-      active: op.active !== false,
-      created: op.created || new Date().toISOString()
-    }));
-    res.json({ success: true, operators: list, total: list.length });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/operators/:token', authAdmin, async (req, res) => {
-  try {
-    const operator = operatorTokens.get(req.params.token);
-    if (!operator) return res.status(404).json({ error: 'Operator not found' });
-    const { status, quota, name, expires_days, permissions } = req.body || {};
-    if (status !== undefined) {
-      operator.status = status;
-      operator.active = (status === 'active');
-    }
-    if (quota !== undefined) operator.quota = quota;
-    if (name) operator.name = name;
-    if (permissions) operator.permissions = permissions;
-    if (expires_days !== undefined) operator.expires_at = Date.now() + expires_days * 86400000;
-    saveOperatorsToFile();
-    try {
-      var s = getSupa();
-      var updateData = {
-        display_name: operator.name,
-        active: operator.active !== false,
-        daily_limit: operator.quota || 100
-      };
-      await s.from('comment_operators').update(updateData).eq('token', req.params.token);
-    } catch(e) { console.log('[ADMIN] Supabase update sync failed:', e.message); }
-    console.log('[ADMIN] Updated operator:', operator.name, 'Status:', operator.status);
-    res.json({ success: true, operator });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/admin/operators/:token', authAdmin, async (req, res) => {
-  try {
-    const operator = operatorTokens.get(req.params.token);
-    if (!operator) return res.status(404).json({ error: 'Operator not found' });
-    operatorTokens.delete(req.params.token);
-    saveOperatorsToFile();
-    try {
-      var s = getSupa();
-      await s.from('comment_operators').delete().eq('token', req.params.token);
-    } catch(e) { console.log('[ADMIN] Supabase delete sync failed:', e.message); }
-    console.log('[ADMIN] Deleted operator:', operator.name);
-    res.json({ success: true, message: 'Operator deleted' });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/admin/operators/suspend-all', authAdmin, (req, res) => {
-  let count = 0;
-  operatorTokens.forEach(function(op, token) {
-    if (op.status === 'active') { op.status = 'suspended'; count++; }
-  });
-  console.log('[ADMIN] Suspended', count, 'operators');
+app.post('/api/admin/operators', authAdmin, function(req, res) {
+  var name = req.body.name, quota = req.body.quota;
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  var token = genToken();
+  var op = { id: 'op_' + Date.now(), name: name, token: token, status: 'active', quota: quota || 100, used_today: 0, created: new Date().toISOString() };
+  operatorTokens.set(token, op);
   saveOperatorsToFile();
-  res.json({ success: true, message: 'Suspended ' + count + ' operators' });
+  getSupa().from('comment_operators').upsert({ email: token + '@op.wc', display_name: name, token: token, daily_limit: quota || 100, active: true }).then(function(){}).catch(function(e){});
+  res.json({ success: true, operator: { name: op.name, token: op.token, quota: op.quota, status: op.status, created: op.created } });
 });
 
-// ============================================================
-// OPERATOR API: Token Validation & Info
-// ============================================================
-app.get('/api/operator/validate', validateOperatorToken, (req, res) => {
-  var op = req.operator;
-  var quota = op.quota || op.daily_limit || 100;
-  var usedToday = op.used_today || 0;
-  var expiresAt = null;
-  if (op.expires_at) {
-    expiresAt = new Date(op.expires_at).toISOString();
-  } else if (op.valid_days && op.created) {
-    var created = new Date(op.created);
-    if (!isNaN(created.getTime())) {
-      expiresAt = new Date(created.getTime() + op.valid_days * 86400000).toISOString();
-    }
-  }
-  var status = op.status || (op.active === false ? 'suspended' : 'active');
+app.get('/api/admin/operators', authAdmin, function(req, res) {
   res.json({
     success: true,
-    operator: {
-      id: op.id, name: op.name, status: status,
-      quota: quota, used_today: usedToday,
-      remaining_today: quota - usedToday,
-      expires_at: expiresAt,
-      permissions: op.permissions || ['comment', 'like']
-    }
+    operators: Array.from(operatorTokens.values()).map(function(op) {
+      return { name: op.name, token: op.token, daily_limit: op.daily_limit || 100, active: op.active !== false };
+    }),
+    total: operatorTokens.size
   });
 });
 
-// ============================================================
-// HEALTH & AUTH ENDPOINTS
-// ============================================================
-app.get('/api/health', async (req, res) => {
-  try {
-    const s = getSupa();
-    const r = await s.from('comment_tasks').select('*', { count: 'exact', head: true });
-    res.json({ ok: true, db: 'connected', tasks: r.count, operators: operatorTokens.size, uptime: Math.floor(process.uptime()) });
-  } catch(e) {
-    res.json({ ok: false, error: e.message, operators: operatorTokens.size });
-  }
+app.patch('/api/admin/operators/:token', authAdmin, function(req, res) {
+  var op = operatorTokens.get(req.params.token);
+  if (!op) return res.status(404).json({ error: 'Operator not found' });
+  if (req.body.status !== undefined) { op.status = req.body.status; op.active = (req.body.status === 'active'); }
+  if (req.body.quota !== undefined) op.quota = req.body.quota;
+  saveOperatorsToFile();
+  res.json({ success: true });
 });
 
-const otps = {};
-app.post('/api/auth/send-otp', async (req, res) => {
-  try {
-    const { email } = req.body || {};
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Invalid email' });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    otps[email] = { code, expires: Date.now() + 300000 };
-    console.log('[OTP]', email, code);
-    res.json({ success: true, code });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.delete('/api/admin/operators/:token', authAdmin, function(req, res) {
+  operatorTokens.delete(req.params.token);
+  saveOperatorsToFile();
+  res.json({ success: true });
 });
 
-const operators = {};
-app.post('/api/auth/verify-otp', async (req, res) => {
-  try {
-    const { email, code } = req.body || {};
-    const s = otps[email];
-    if (!s) return res.status(400).json({ error: 'Code expired' });
-    if (Date.now() > s.expires) { delete otps[email]; return res.status(400).json({ error: 'Code expired' }); }
-    if (s.code !== code) return res.status(400).json({ error: 'Code wrong' });
-    delete otps[email];
-    const username = email.split('@')[0];
-    let user = operators[email];
-    if (!user) {
-      user = { id: 'op_' + Date.now(), email, display_name: username, created_at: new Date().toISOString() };
-      operators[email] = user;
-    }
-    user.updated_at = new Date().toISOString();
-    res.json({ success: true, user: { id: user.id, email, display_name: user.display_name } });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.get('/api/operator/validate', validateOperatorToken, function(req, res) {
+  var op = req.operator;
+  res.json({
+    success: true,
+    operator: { id: op.id, name: op.name, status: op.status || 'active', quota: op.daily_limit || 100, remaining_today: (op.daily_limit || 100) - (op.used_today || 0), permissions: op.permissions || ['comment', 'like'] }
+  });
 });
 
-// ============================================================
-// HOSTS
-// ============================================================
+app.get('/api/health', function(req, res) {
+  getSupa().from('comment_tasks').select('*', { count: 'exact', head: true }).then(function(r) {
+    res.json({ ok: true, db: 'connected', tasks: r.count, operators: operatorTokens.size, version: CURRENT_VERSION });
+  }).catch(function() {
+    res.json({ ok: true, operators: operatorTokens.size, version: CURRENT_VERSION });
+  });
+});
+
 const hostStore = {};
-
-app.get('/api/hosts', async (req, res) => {
-  try {
-    const { operator_id } = req.query;
-    if (!operator_id) return res.status(400).json({ error: 'operator_id required' });
-    let hosts = (hostStore[operator_id] || []).map(function(h) { return Object.assign({}, h); });
-    try {
-      const s = getSupa();
-      const { data: dbHosts } = await s.from('comment_hosts').select('*').order('last_login_at', { ascending: false }).limit(50);
-      if (dbHosts) {
-        for (const dh of dbHosts) {
-          const mapped = {
-            id: dh.tiktok_username,
-            operator_id: dh.operator_id,
-            tiktok_username: dh.tiktok_username,
-            display_name: dh.display_name || dh.tiktok_username,
-            status: dh.status || 'offline',
-            is_logged_in: dh.status === 'online' || dh.status === 'running',
-            daily_comment_count: dh.daily_comment_count || 0,
-            daily_comment_limit: dh.daily_comment_limit || 30,
-            daily_comment_date: dh.daily_comment_date || new Date().toISOString().split('T')[0],
-            last_login_at: dh.last_login_at
-          };
-          const exists = hosts.find(function(h) { return h.id === mapped.id || h.tiktok_username === mapped.tiktok_username; });
-          if (!exists) hosts.push(mapped); else Object.assign(exists, mapped);
-        }
-      }
-    } catch(e) {}
-    res.json({ success: true, hosts });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.get('/api/hosts', function(req, res) {
+  var hosts = Object.values(hostStore).flat();
+  res.json({ success: true, hosts: hosts.map(function(h) { return { id: h.id, tiktok_username: h.tiktok_username, status: h.status || 'offline', daily_comment_count: h.daily_comment_count || 0 }; }) });
 });
 
-app.post('/api/hosts', async (req, res) => {
-  try {
-    const { operator_id, tiktok_username, display_name } = req.body || {};
-    if (!operator_id || !tiktok_username) return res.status(400).json({ error: 'operator_id and tiktok_username required' });
-    if (!hostStore[operator_id]) hostStore[operator_id] = [];
-    var crypto = require('crypto');
-    var hostToken = crypto.randomBytes(16).toString('hex');
-    const host = {
-      id: 'h_' + Date.now(), operator_id, tiktok_username,
-      display_name: display_name || tiktok_username,
-      host_token: hostToken,
-      status: 'offline',
-      daily_comment_count: 0,
-      daily_comment_limit: 30,
-      daily_comment_date: new Date().toISOString().split('T')[0],
-      created_at: new Date().toISOString()
-    };
-    hostStore[operator_id].push(host);
-    res.json({ success: true, host });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.post('/api/hosts', function(req, res) {
+  var opId = req.body.operator_id, tu = req.body.tiktok_username, dn = req.body.display_name;
+  if (!opId || !tu) return res.status(400).json({ error: 'operator_id and tiktok_username required' });
+  if (!hostStore[opId]) hostStore[opId] = [];
+  var h = { id: 'h_' + Date.now(), operator_id: opId, tiktok_username: tu, display_name: dn || tu, host_token: require('crypto').randomBytes(16).toString('hex'), status: 'offline', daily_comment_count: 0 };
+  hostStore[opId].push(h);
+  res.json({ success: true, host: h });
 });
 
-app.post('/api/hosts/:id/session', async (req, res) => {
-  try {
-    var hostId = req.params.id;
-    if (hostId && !hostId.startsWith('h_')) {
-      for (const opHosts of Object.values(hostStore)) {
-        var found = opHosts.find(function(h) { return h.tiktok_username === hostId; });
-        if (found) { hostId = found.id; break; }
-      }
+app.post('/api/hosts/:id/session', function(req, res) {
+  var hid = req.params.id;
+  if (hid && !hid.startsWith('h_')) {
+    for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+      var f = ops[oi].find(function(x) { return x.tiktok_username === hid; });
+      if (f) { hid = f.id; break; }
     }
-    const { tiktok_session, display_name, operator_id } = req.body || {};
-    const s = getSupa();
-    const { data: existing } = await s.from('comment_hosts').select('id').eq('tiktok_username', hostId).limit(1);
-    if (existing && existing.length > 0) {
-      await s.from('comment_hosts').update({
-        tiktok_session, status: 'online', last_login_at: new Date().toISOString(),
-        display_name: display_name || existing[0].display_name
-      }).eq('id', existing[0].id);
-    } else {
-      let opId = operator_id;
-      if (!opId) {
-        const { data: ops } = await s.from('comment_operators').select('id').limit(1);
-        if (ops && ops.length > 0) opId = ops[0].id;
-        else {
-          const { data: newOp } = await s.from('comment_operators').insert({ email: 'auto@whalecomment.app', display_name: 'Auto' }).select('id').single();
-          if (newOp) opId = newOp.id;
-        }
-      }
-      await s.from('comment_hosts').insert({
-        operator_id: opId, tiktok_username: hostId,
-        display_name: display_name || hostId,
-        tiktok_session, status: 'online', last_login_at: new Date().toISOString()
-      });
-    }
-    for (const opHosts of Object.values(hostStore)) {
-      const h = opHosts.find(function(x) { return x.id === hostId || x.tiktok_username === hostId; });
-      if (h) { h.status = 'online'; h.last_login_at = new Date().toISOString(); break; }
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  }
+  var ts = req.body.tiktok_session, dn = req.body.display_name;
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var h = ops[oi].find(function(x) { return x.id === hid || x.tiktok_username === hid; });
+    if (h) { h.status = 'online'; if (ts) h.tiktok_session = ts; if (dn) h.display_name = dn; break; }
+  }
+  res.json({ success: true });
 });
 
-app.post('/api/hosts/:id/start', (req, res) => {
-  for (const opHosts of Object.values(hostStore)) {
-    const h = opHosts.find(function(x) { return x.id === req.params.id; });
+app.post('/api/hosts/:id/start', function(req, res) {
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var h = ops[oi].find(function(x) { return x.id === req.params.id; });
     if (h) { h.status = 'running'; h.started_at = new Date().toISOString(); break; }
   }
   res.json({ success: true });
 });
 
-app.post('/api/hosts/:id/stop', (req, res) => {
-  for (const opHosts of Object.values(hostStore)) {
-    const h = opHosts.find(function(x) { return x.id === req.params.id; });
+app.post('/api/hosts/:id/stop', function(req, res) {
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var h = ops[oi].find(function(x) { return x.id === req.params.id; });
     if (h) { h.status = 'online'; break; }
   }
   res.json({ success: true });
 });
 
-app.patch('/api/hosts/:id', async (req, res) => {
-  try {
-    for (const opHosts of Object.values(hostStore)) {
-      const h = opHosts.find(function(x) { return x.id === req.params.id; });
-      if (h) { Object.assign(h, req.body || {}); break; }
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.patch('/api/hosts/:id', function(req, res) {
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var h = ops[oi].find(function(x) { return x.id === req.params.id; });
+    if (h) { Object.assign(h, req.body || {}); break; }
+  }
+  res.json({ success: true });
 });
 
-// ============================================================
-// TASKS
-// ============================================================
 const taskStore = {};
 
-app.post('/api/tasks/batch', async (req, res) => {
-  try {
-    const { host_id, whale_usernames } = req.body || {};
-    if (!host_id || !whale_usernames || !whale_usernames.length) return res.status(400).json({ error: 'host_id and whale_usernames required' });
-    if (!taskStore[host_id]) taskStore[host_id] = [];
-    const existing = new Set(taskStore[host_id].map(function(t) { return t.whale_username || t.profileId; }));
-    let count = 0;
-    for (const un of whale_usernames) {
-      if (existing.has(un)) continue;
-      taskStore[host_id].push({
-        id: 't_' + Date.now() + '_' + count,
-        host_id,
-        profileId: un,
-        whale_username: un,
-        videoUrl: 'https://www.tiktok.com/@' + un,
-        whale_persona: 'comprehensive',
-        status: 'pending',
-        priority: 50,
-        created_at: new Date().toISOString()
-      });
-      count++;
-    }
-    res.json({ success: true, count, skipped: whale_usernames.length - count });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+// GENERATE TASKS - main worker endpoint
+app.post('/api/hosts/:id/generate-tasks', function(req, res) {
+  var hostId = req.params.id;
+  var token = req.query.token || (req.body && req.body.token);
+  var limit = parseInt(req.body && req.body.limit) || 10;
+
+  if (!token) return res.status(401).json({ error: 'Token required' });
+  var auth = operatorTokens.get(token);
+  if (!auth) return res.status(401).json({ error: 'Invalid token' });
+  if (auth.active === false) return res.status(403).json({ error: 'Token suspended' });
+
+  var host = null;
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var f = ops[oi].find(function(h) { return h.id === hostId || h.tiktok_username === hostId; });
+    if (f) { host = f; break; }
+  }
+
+  var idCount = Math.floor(limit * 0.60);
+  var myCount = Math.floor(limit * 0.30);
+  var usCount = limit - idCount - myCount;
+
+  var allW = WHALES.filter(function(w) { return w.region === 'ID'; }).slice(0, idCount);
+  allW = allW.concat(WHALES.filter(function(w) { return w.region === 'MY'; }).slice(0, myCount));
+  allW = allW.concat(WHALES.filter(function(w) { return w.region === 'US'; }).slice(0, usCount));
+
+  // Shuffle
+  for (var i = allW.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = allW[i]; allW[i] = allW[j]; allW[j] = tmp;
+  }
+  if (!allW.length) allW = WHALES.slice(0, limit);
+
+  if (!taskStore[hostId]) taskStore[hostId] = [];
+
+  var existNames = {};
+  for (var ti = 0; ti < taskStore[hostId].length; ti++) {
+    var t = taskStore[hostId][ti];
+    existNames[t.profileId || t.username || t.whale_username] = 1;
+  }
+
+  var count = 0;
+  var hostName = (host && (host.display_name || host.tiktok_username)) || 'kita';
+  var personas = ['challenger', 'vip', 'high_spender', 'comprehensive'];
+
+  for (var wi = 0; wi < allW.length; wi++) {
+    var w = allW[wi];
+    if (existNames[w.username]) continue;
+    if (count >= limit) break;
+    var region = w.region || 'ID';
+    var lang = (region === 'US') ? 'en' : 'id';
+    var persona = personas[Math.floor(Math.random() * personas.length)];
+    var scriptText = getScript(lang, hostName, w.nickname || w.username);
+    taskStore[hostId].push({
+      id: 't_' + Date.now() + '_' + count,
+      profileId: w.username,
+      username: w.username,
+      whale_username: w.username,
+      videoUrl: 'https://www.tiktok.com/@' + w.username,
+      script: scriptText,
+      lang: lang,
+      region: region,
+      whale_persona: persona,
+      status: 'pending',
+      priority: 50
+    });
+    existNames[w.username] = 1;
+    count++;
+  }
+
+  res.json({ success: true, count: count, total: allW.length, source: 'inline' });
 });
 
-app.get('/api/tasks/next', validateOperatorToken, async (req, res) => {
-  try {
-    const { host_id, limit } = req.query;
-    req.operator.last_active = Date.now();
-    const tasks = (taskStore[host_id] || []).filter(function(t) { return t.status === 'ready' || t.status === 'pending'; }).slice(0, parseInt(limit) || 5);
-    res.json({ success: true, tasks });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.post('/api/tasks/batch', function(req, res) {
+  var hid = req.body.host_id, wus = req.body.whale_usernames;
+  if (!hid || !wus || !wus.length) return res.status(400).json({ error: 'host_id and whale_usernames required' });
+  if (!taskStore[hid]) taskStore[hid] = [];
+  var exist = {};
+  for (var ti = 0; ti < taskStore[hid].length; ti++) {
+    var t = taskStore[hid][ti];
+    exist[t.whale_username || t.profileId] = 1;
+  }
+  var count = 0;
+  for (var ui = 0; ui < wus.length; ui++) {
+    var u = wus[ui];
+    if (exist[u]) continue;
+    taskStore[hid].push({ id: 't_' + Date.now() + '_' + count, host_id: hid, profileId: u, whale_username: u, videoUrl: 'https://www.tiktok.com/@' + u, whale_persona: 'comprehensive', status: 'pending', priority: 50 });
+    exist[u] = 1;
+    count++;
+  }
+  res.json({ success: true, count: count, skipped: wus.length - count });
 });
 
-app.patch('/api/tasks/:id', async (req, res) => {
-  var token = req.query.token;
-  if (token) {
-    var op = operatorTokens.get(token);
+app.get('/api/tasks/next', validateOperatorToken, function(req, res) {
+  var hid = req.query.host_id;
+  req.operator.used_today = req.operator.used_today || 0;
+  var tasks = (taskStore[hid] || []).filter(function(t) { return t.status === 'pending' || t.status === 'ready'; }).slice(0, parseInt(req.query.limit) || 5);
+  res.json({ success: true, tasks: tasks });
+});
+
+app.patch('/api/tasks/:id', function(req, res) {
+  var tok = req.query.token;
+  if (tok) {
+    var op = operatorTokens.get(tok);
     if (!op || op.active === false) return res.status(403).json({ error: 'Invalid token' });
   }
-  try {
-    for (const [hid, tasks] of Object.entries(taskStore)) {
-      const t = tasks.find(function(x) { return x.id === req.params.id; });
-      if (t) {
+  for (var keys = Object.keys(taskStore), ki = 0; ki < keys.length; ki++) {
+    var tasks = taskStore[keys[ki]];
+    for (var ti = 0; ti < tasks.length; ti++) {
+      var t = tasks[ti];
+      if (t.id === req.params.id) {
         Object.assign(t, req.body || {});
-        if (req.operator) { t.operator = req.operator.name; t.operator_id = req.operator.id; }
         if (req.body.status === 'completed') {
-          for (const opHosts of Object.values(hostStore)) {
-            const h = opHosts.find(function(x) { return x.id === hid; });
+          for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+            var h = ops[oi].find(function(x) { return x.id === keys[ki]; });
             if (h) { h.daily_comment_count = (h.daily_comment_count || 0) + 1; break; }
           }
         }
-        break;
+        res.json({ success: true });
+        return;
       }
     }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/tasks/progress', async (req, res) => {
-  try {
-    const { host_id } = req.query;
-    const tasks = taskStore[host_id] || [];
-    const done = tasks.filter(function(t) { return t.status === 'completed'; }).length;
-    const fail = tasks.filter(function(t) { return t.status === 'failed'; }).length;
-    const pend = tasks.filter(function(t) { return t.status === 'pending' || t.status === 'ready'; }).length;
-    let dailyCount = 0, dailyLimit = 30;
-    for (const opHosts of Object.values(hostStore)) {
-      const h = opHosts.find(function(x) { return x.id === host_id; });
-      if (h) { dailyCount = h.daily_comment_count || 0; dailyLimit = h.daily_comment_limit || 30; break; }
-    }
-    res.json({ success: true, total: tasks.length, completed: done, failed: fail, pending: pend, daily_count: dailyCount, daily_limit: dailyLimit });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// GENERATE TASKS FROM WHALE_PROFILES
-// ============================================================
-app.post('/api/hosts/:id/generate-tasks', async (req, res) => {
-  try {
-    var hostId = req.params.id;
-    if (hostId && !hostId.startsWith('h_')) {
-      for (const opHosts of Object.values(hostStore)) {
-        var found = opHosts.find(function(h) { return h.tiktok_username === hostId; });
-        if (found) { hostId = found.id; break; }
-      }
-    }
-    const { limit: taskLimit } = req.body || {};
-    const limit = Math.min(parseInt(taskLimit) || 30, 30);
-    let host = null;
-    for (const opHosts of Object.values(hostStore)) {
-      host = opHosts.find(function(x) { return x.id === hostId; });
-      if (host) break;
-    }
-    if (!host) {
-      host = { id: hostId, display_name: hostId, tiktok_username: hostId };
-      for (const opHosts of Object.values(hostStore)) {
-        if (opHosts.length > 0) { opHosts.push(host); break; }
-      }
-    }
-    const s = getSupa();
-    
-    // 按地区查询金�?(60% ID, 30% MY, 10% US)
-    const [idWhales, myWhales, usWhales] = await Promise.all([
-      s.from('whale_profiles').select('*').eq('region', 'ID').order('total_gifts', { ascending: false }).limit(100),
-      s.from('whale_profiles').select('*').eq('region', 'MY').order('total_gifts', { ascending: false }).limit(50),
-      s.from('whale_profiles').select('*').eq('region', 'US').order('total_gifts', { ascending: false }).limit(30)
-    ]);
-    
-    // 合并并打�?    let allWhales = [];
-    const idCount = Math.floor(limit * 0.60);
-    const myCount = Math.floor(limit * 0.30);
-    const usCount = limit - idCount - myCount;
-    
-    if (idWhales.data) allWhales.push(...idWhales.data.slice(0, idCount));
-    if (myWhales.data) allWhales.push(...myWhales.data.slice(0, myCount));
-    if (usWhales.data) allWhales.push(...usWhales.data.slice(0, usCount));
-    
-    // 打乱顺序
-    for (let i = allWhales.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allWhales[i], allWhales[j]] = [allWhales[j], allWhales[i]];
-    }
-    
-    if (!allWhales.length) return res.json({ success: true, count: 0, message: 'no whales' });
-
-    // 获取所有语言的话�?(Supabase 或默�?
-    const { data: scripts } = await s.from('comment_scripts')
-      .select('*')
-      .order('success_rate', { ascending: false });
-    
-    // 如果 Supabase 为空，使用默认话�?    const useDefault = !scripts || scripts.length === 0;
-    console.log('[TASKS] Scripts source:', useDefault ? 'DEFAULT (2000)' : 'DB (' + scripts.length + ')');
-
-    if (!taskStore[hostId]) taskStore[hostId] = [];
-    const existing = new Set(taskStore[hostId].map(function(t) { return t.profileId; }));
-    let count = 0;
-
-    for (const w of allWhales) {
-      if (existing.has(w.username)) continue;
-      const persona = w.persona || 'comprehensive';
-      const hostName = host.display_name || host.tiktok_username || 'kita';
-      
-      // 根据地区选择话术语言
-      const whaleRegion = w.region || 'ID';
-      const scriptLang = whaleRegion === 'US' ? 'en' : 'id';
-      
-      let script = '';
-      
-      // 优先�?Supabase 获取，否则使用默认话�?      if (!useDefault) {
-        // 筛选匹配语言�?persona 的话�?        const matching = (scripts || []).filter(function(s) { 
-          return s.lang === scriptLang && s.persona === persona; 
-        });
-        const pool = matching.length > 0 ? matching : (scripts || []).filter(function(s) { return s.lang === scriptLang; });
-        
-        if (pool.length > 0) {
-          const picked = pool[Math.floor(Math.random() * pool.length)];
-          script = (picked.content || '')
-            .replace(/\{host\}/g, hostName)
-            .replace(/\{whale\}/g, w.nickname || w.username)
-            .replace(/\{name\}/g, w.nickname || w.username);
-        }
-      }
-      
-      // Fallback: 使用默认话术
-      if (!script) {
-        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
-          .replace(/\{host\}/g, hostName)
-          .replace(/\{whale\}/g, w.nickname || w.username)
-          .replace(/\{name\}/g, w.nickname || w.username);
-      }
-      
-      // Fallback: 使用内置话术�?      if (!script) {
-        script = DEFAULT_SCRIPTS.getRandom(scriptLang)
-          .replace(/\{host\}/g, hostName)
-          .replace(/\{whale\}/g, w.nickname || w.username)
-          .replace(/\{name\}/g, w.nickname || w.username);
-        console.log('[SCRIPTS] Using default script for', w.username, '(' + scriptLang + ')');
-      }
-
-      taskStore[hostId].push({
-        id: 't_' + Date.now() + '_' + count,
-        taskId: 't_' + Date.now() + '_' + count,
-        host_id: hostId,
-        profileId: w.username,
-        whale_username: w.username,
-        whale_persona: persona,
-        whale_region: whaleRegion,
-        script_lang: scriptLang,
-        commentText: script,
-        videoId: null,
-        videoUrl: 'https://www.tiktok.com/@' + w.username,
-        status: 'pending',
-        priority: w.total_gifts > 1000000 ? 80 : 50,
-        created_at: new Date().toISOString()
-      });
-      existing.add(w.username);
-      count++;
-    }
-    console.log('[TASKS] Generated', count, 'tasks for', hostId, '(ID:', Math.floor(count * 0.6), 'MY:', Math.floor(count * 0.3), 'US:', count - Math.floor(count * 0.6) - Math.floor(count * 0.3) + ')');
-    res.json({ success: true, count, total: allWhales.length, distribution: { ID: idCount, MY: myCount, US: usCount } });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/hosts/:id/regenerate-token', (req, res) => {
-  try {
-    var crypto = require('crypto');
-    var newToken = crypto.randomBytes(16).toString('hex');
-    for (const opHosts of Object.values(hostStore)) {
-      const h = opHosts.find(function(x) { return x.id === req.params.id; });
-      if (h) { h.host_token = newToken; res.json({ success: true, host_token: newToken }); return; }
-    }
-    res.status(404).json({ error: 'host not found' });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// SCRIPTS IMPORT API
-// ============================================================
-app.post('/api/admin/import-scripts', authAdmin, async (req, res) => {
-  try {
-    const { scripts, clear_existing } = req.body || {};
-    if (!scripts || !Array.isArray(scripts)) {
-      return res.status(400).json({ error: 'scripts array required' });
-    }
-    
-    const s = getSupa();
-    
-    // 可选：清空现有话术
-    if (clear_existing) {
-      await s.from('comment_scripts').delete().neq('id', 0);
-      console.log('[ADMIN] Cleared existing scripts');
-    }
-    
-    // 批量插入 (每批 100 �?
-    const batchSize = 100;
-    let imported = 0;
-    let failed = 0;
-    
-    for (let i = 0; i < scripts.length; i += batchSize) {
-      const batch = scripts.slice(i, i + batchSize);
-      const { data, error } = await s.from('comment_scripts').insert(batch);
-      if (error) {
-        console.log('[ADMIN] Batch import error:', error.message);
-        failed += batch.length;
-      } else {
-        imported += batch.length;
-      }
-    }
-    
-    console.log('[ADMIN] Imported', imported, 'scripts,', failed, 'failed');
-    res.json({ success: true, imported, failed, total: scripts.length });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
   }
+  res.json({ success: true });
 });
 
-// ============================================================
-// UPDATE WHALE REGIONS
-// ============================================================
-app.post('/api/admin/update-whale-regions', authAdmin, async (req, res) => {
-  try {
-    const s = getSupa();
-    
-    // 获取所有金�?    const { data: whales, error } = await s.from('whale_profiles').select('username, region');
-    if (error) return res.status(500).json({ error: error.message });
-    
-    // 地区判断函数
-    function detectRegion(username) {
-      const name = (username || '').toLowerCase();
-      
-      // 印尼特征
-      const idPatterns = [/habib|jack|ahmad|muhammad|febri|putra|bagus|siti|dewi|ratna|rini|ayu|putri|kaede|guardman|bonsai/i];
-      // 马来西亚特征
-      const myPatterns = [/lemon56920|puteraiman|malaysia|kuala|nor|aziz|farah|izzat|hakim|nurul|amirah/i];
-      // 美国特征
-      const usPatterns = [/unstoppable|king|queen|coven|onlyfams|brinn|official|real|the_/i];
-      
-      for (const p of usPatterns) if (p.test(name)) return 'US';
-      for (const p of myPatterns) if (p.test(name)) return 'MY';
-      for (const p of idPatterns) if (p.test(name)) return 'ID';
-      
-      // 默认随机分布
-      const rand = Math.random();
-      if (rand < 0.60) return 'ID';
-      if (rand < 0.90) return 'MY';
-      return 'US';
-    }
-    
-    // 批量更新
-    let updated = 0;
-    for (const w of (whales || [])) {
-      if (w.region) continue; // 已有 region 跳过
-      
-      const newRegion = detectRegion(w.username);
-      const { error: updErr } = await s.from('whale_profiles')
-        .update({ region: newRegion })
-        .eq('username', w.username);
-      
-      if (!updErr) updated++;
-    }
-    
-    console.log('[ADMIN] Updated', updated, 'whale regions');
-    res.json({ success: true, updated, total: whales?.length || 0 });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
+app.get('/api/tasks/progress', function(req, res) {
+  var hid = req.query.host_id;
+  var tasks = taskStore[hid] || [];
+  var done = 0, fail = 0, pend = 0;
+  for (var ti = 0; ti < tasks.length; ti++) {
+    var t = tasks[ti];
+    if (t.status === 'completed') done++;
+    else if (t.status === 'failed') fail++;
+    else pend++;
   }
+  res.json({ success: true, total: tasks.length, completed: done, failed: fail, pending: pend });
 });
 
-// ============================================================
-// SCRIPTS
-// ============================================================
-app.post('/api/scripts/generate', async (req, res) => {
-  try {
-    const { persona, host_name, whale_username, whale_region } = req.body || {};
-    if (!persona) return res.status(400).json({ error: 'persona required' });
-    const s = getSupa();
-    const { data: c } = await s.from('comment_scripts').select('content').eq('persona', persona).eq('lang', 'id').order('success_rate', { ascending: false }).limit(5);
-    let script = '';
-    if (c && c.length) {
-      script = c[Math.floor(Math.random() * c.length)].content;
-      script = script.replace(/\{host\}/g, host_name || 'kita').replace(/\{whale\}/g, whale_username || 'Kak');
-      script = addFlavor(script, persona);
-      return res.json({ success: true, script, persona_style: persona, from_cache: true });
-    }
-    script = getFallback(persona, host_name, whale_username);
-    script = addFlavor(script, persona);
-    res.json({ success: true, script, persona_style: persona, from_cache: false });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.post('/api/hosts/:id/regenerate-token', function(req, res) {
+  var nt = require('crypto').randomBytes(16).toString('hex');
+  for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
+    var h = ops[oi].find(function(x) { return x.id === req.params.id; });
+    if (h) { h.host_token = nt; res.json({ success: true, host_token: nt }); return; }
+  }
+  res.status(404).json({ error: 'host not found' });
 });
 
-app.post('/api/scripts/generate-batch', async (req, res) => {
-  try {
-    const { tasks } = req.body || {};
-    if (!tasks || !tasks.length) return res.status(400).json({ error: 'tasks required' });
-    const s = getSupa();
-    const rr = [];
-    for (const t of tasks.slice(0, 10)) {
-      try {
-        const hostName = t.host_display_name || 'kita';
-        const script = getFallback(t.whale_persona || 'comprehensive', hostName, t.whale_username);
-        await s.from('comment_tasks').update({
-          generated_script: script,
-          generated_persona_style: t.whale_persona || 'comprehensive',
-          status: 'ready',
-          updated_at: new Date().toISOString()
-        }).eq('id', t.id);
-        rr.push({ task_id: t.id, script, status: 'ready' });
-      } catch(er) { rr.push({ task_id: t.id, error: er.message, status: 'error' }); }
-    }
-    res.json({ success: true, results: rr });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// STATS
-// ============================================================
-app.get('/api/stats', async (req, res) => {
-  try {
-    const { host_id } = req.query;
-    const tasks = host_id ? (taskStore[host_id] || []) : Object.values(taskStore).flat();
-    const ok = tasks.filter(function(t) { return t.status === 'completed'; }).length;
-    const fail = tasks.filter(function(t) { return t.status === 'failed'; }).length;
-    const recent = tasks.filter(function(t) { return t.status === 'completed'; }).slice(-20).map(function(t) {
-      return { action: 'comment_success', whale_username: t.whale_username, created_at: t.executed_at || t.updated_at || t.created_at };
-    });
-    res.json({
-      success: true,
-      total_logs: tasks.length,
-      comments_success: ok,
-      comments_failed: fail,
-      success_rate: ok + fail > 0 ? Math.round(ok / (ok + fail) * 100) : 0,
-      recent
-    });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// HELPERS
-// ============================================================
-function calcPriority(p) {
-  let s = 50;
-  if (p.persona === 'high_spender') s += 30; else if (p.persona === 'vip') s += 25; else if (p.persona === 'challenger') s += 20; else if (p.persona === 'gift_giver') s += 15; else if (p.persona === 'active') s += 10;
-  if ((p.total_gifts || 0) > 5000000) s += 20; else if ((p.total_gifts || 0) > 1000000) s += 10;
-  return Math.min(100, s);
-}
-
-function addFlavor(script, persona) {
-  const em = {
-    challenger: ['�?,'🔥','💪','🎯','�?],
-    vip: ['💎','🌟','🏆','👑','🎉'],
-    high_spender: ['💰','🤑','💸','👑','🪙'],
-    curious: ['🤔','�?,'💭','🎁','🎈'],
-    active: ['🙋','👋','🤝','�?,'🎊'],
-    gift_giver: ['🎁','💝','🌹','🎀','💕'],
-    comprehensive: ['�?,'🏆','💕','🙌','🎉']
-  };
-  const pool = em[persona] || em.comprehensive;
-  const sf = ' ' + pool[Math.floor(Math.random() * pool.length)] + pool[Math.floor(Math.random() * pool.length)];
-  const fl = [' Yuk mampir!', ' Ditunggu ya!', ' Jangan lupa mampir~', ' See you there!', ''];
-  return script.trim() + sf + fl[Math.floor(Math.random() * fl.length)];
-}
-
-function getFallback(persona, hostName, whaleName) {
-  const t = {
-    challenger: [
-      'Kak ' + whaleName + ', ' + hostName + ' lagi live nih! Siap-siap battle seru !',
-      'Eh jagoan! ' + hostName + ' butuh support kamu nih di live sekarang !'
-    ],
-    vip: [
-      'Kak ' + whaleName + ' special guest kita! ' + hostName + ' ada kejutan buat kamu !',
-      'VIP alert! ' + hostName + ' nungguin kamu nih Kak ' + whaleName + ' !'
-    ],
-    high_spender: [
-      'Kak ' + whaleName + ', ' + hostName + ' lagi mega live! Ada gift spesial nih buat kamu !',
-      'Sultan ' + whaleName + ', ' + hostName + ' live sekarang! Hadiah besar menanti !'
-    ],
-    curious: [
-      whaleName + ', ' + hostName + ' ada sesuatu yang bikin penasaran nih di live !',
-      'Penasaran? ' + hostName + ' lagi live dengan surprise spesial! Cek sekarang !'
-    ],
-    active: [
-      hostName + ' kangen sama kamu Kak ' + whaleName + '! Mampir dong !',
-      'Bestie ' + whaleName + '! ' + hostName + ' lagi live, vibes-nya rame banget !'
-    ],
-    gift_giver: [
-      'Kak ' + whaleName + ' baik hati! ' + hostName + ' pengen kasih shoutout spesial buat kamu !',
-      'Wow ' + whaleName + ', ' + hostName + ' lagi live! Gift kamu selalu bikin dia senang !'
-    ],
-    comprehensive: [
-      'Kak ' + whaleName + ', ' + hostName + ' lagi live seru nih! Mampir yuk !',
-      hostName + ' live sekarang Kak ' + whaleName + '! Jangan ketinggalan serunya !'
-    ]
-  };
-  const pool = t[persona] || t.comprehensive;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// ============================================================
-// TOKEN VERIFICATION & STARTUP
-// ============================================================
-app.get('/api/verify-token', (req, res) => {
-  var token = req.query.token;
-  if (!token) return res.json({ valid: false, error: 'Token required' });
-  var op = operatorTokens.get(token);
+app.get('/api/verify-token', function(req, res) {
+  var tok = req.query.token;
+  if (!tok) return res.json({ valid: false });
+  var op = operatorTokens.get(tok);
   if (!op) return res.json({ valid: false, error: 'Invalid token' });
   if (op.active === false) return res.json({ valid: false, error: 'Token suspended' });
   res.json({ valid: true, name: op.name, daily_limit: op.daily_limit });
 });
 
-
-// Load v1.2.3 routes
-require('./routes/v1_2_3')(app, getSupa, taskStore, operatorTokens);
-
-app.listen(PORT, () => {
-  console.log('WhaleComment API running on port ' + PORT);
-  console.log('Supabase: ' + SUPABASE_URL);
+app.listen(PORT, function() {
+  console.log('[WhaleComment] API v' + CURRENT_VERSION + ' running on port ' + PORT);
+  console.log('[WhaleComment] Operators ready: ' + operatorTokens.size);
+  console.log('[WhaleComment] Scripts: ' + SCRIPTS_ID.length + ' ID + ' + SCRIPTS_EN.length + ' EN inline');
 });

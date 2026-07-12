@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WhaleComment 管理后台</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -10,16 +11,27 @@ h1{color:#ff2d55;margin-bottom:20px}
 .card{background:#1a1a2e;border:1px solid #252540;border-radius:10px;padding:20px;margin-bottom:16px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #252540}
-th{color:#888;font-size:12px}
+th{color:#888;font-weight:600;font-size:12px;text-transform:uppercase}
 .badge{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
-.badge-on{background:#00ff8844;color:#00ff88}.badge-off{background:#ff444444;color:#ff4444}
+.badge-active{background:#00ff8844;color:#00ff88}
+.badge-inactive{background:#ff444444;color:#ff4444}
 input{padding:8px 12px;border:1px solid #252540;border-radius:6px;background:#0f0f1a;color:#fff;margin-right:8px;margin-bottom:8px}
 button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;margin-right:4px}
-.btn-new{background:#ff2d55;color:#fff}.btn-refresh{background:#333;color:#ccc}
+.btn-create{background:#ff2d55;color:#fff}
+.btn-refresh{background:#333;color:#ccc}
 .btn-copy{background:#1a6b3c;color:#fff;font-size:11px}
-.btn-pause{background:#d2991d;color:#fff;font-size:11px}
 .btn-delete{background:#ff4444;color:#fff;font-size:11px}
-.toast{position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:12px 20px;border-radius:8px;display:none;z-index:999}
+.btn-pause{background:#d2991d;color:#fff;font-size:11px}
+.toast{position:fixed;bottom:20px;right:20px;background:#1a6b3c;color:#fff;padding:12px 20px;border-radius:8px;display:none;z-index:999}
+.toast.error{background:#ff4444}
+input[readonly]{cursor:default;background:#161625}
+/* Token 行布局 */
+.token-cell{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.token-value{font-family:monospace;font-size:11px;color:#aaa;letter-spacing:0.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px}
+.token-full{display:none;font-family:monospace;font-size:10px;color:#888;word-break:break-all;margin-top:4px}
+.token-value:hover,.token-value:focus{color:#fff}
+.show-full .token-value{display:none}
+.show-full .token-full{display:block}
 </style>
 </head>
 <body>
@@ -27,99 +39,172 @@ button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight
 
 <div class="card">
 <h2 style="margin-bottom:16px">创建运营账号</h2>
-<input id="name" placeholder="姓名" style="width:150px">
-<input id="limit" type="number" value="100" style="width:80px">
-<input id="days" type="number" value="30" style="width:80px">
-<button class="btn-new" onclick="create()">创建运营账号</button>
+<input id="opName" placeholder="姓名" style="width:150px">
+<input id="opLimit" type="number" value="100" style="width:80px" title="每日配额">
+<input id="opDays" type="number" value="30" style="width:80px" title="有效天数">
+<button class="btn-create" onclick="createOp()">创建运营账号</button>
 </div>
 
 <div class="card">
-<h2 style="margin-bottom:16px">运营列表 <button class="btn-refresh" onclick="load()">🔄</button></h2>
+<h2 style="margin-bottom:16px">运营列表 <button class="btn-refresh" onclick="loadOps()">🔄 刷新</button></h2>
 <table><thead><tr><th>姓名</th><th>Token</th><th>状态</th><th>配额</th><th>到期</th><th>操作</th></tr></thead>
-<tbody id="list"><tr><td colspan="6" style="color:#666;text-align:center">加载中...</td></tr></tbody></table>
+<tbody id="opList"><tr><td colspan="6" style="color:#666;text-align:center">加载中...</td></tr></tbody></table>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-var SUPA='https://sxsmjfkxllepntgzfqbl.supabase.co';
-var KEY='sb_publishable_d30e83ittDALlQtv0nJF4w_Cz7xpTLt';
-var TABLE='operator_tokens';
+var TOKEN = 'wc_admin_2026_secret_token';
 
-async function api(method,path,body){
-var h={'apikey':KEY,'Authorization':'Bearer '+KEY,'Content-Type':'application/json'};
-var r=await fetch(SUPA+path,{method:method,headers:h,body:body?JSON.stringify(body):undefined});
-return r.json();
+// 统一的 toast 提示
+function toast(msg, isError) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = isError ? 'toast error' : 'toast';
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() { t.style.display = 'none'; }, 4000);
 }
 
-function token(){
-var a='0123456789abcdef',t='wc_op_';
-for(var i=0;i<40;i++)t+=a[Math.floor(Math.random()*16)];
-return t;
+// API 请求（自动处理相对路径）
+function getBaseUrl() {
+  // 从当前脚本所在位置推断 API base
+  var loc = window.location.pathname;
+  return loc.substring(0, loc.lastIndexOf('/'));
 }
 
-async function load(){
-var d=await api('GET','/rest/v1/'+TABLE+'?select=*&order=created.desc');
-var rows=d||[];
-if(d.error){console.error(d.error);rows=[]}
-var h='';
-if(!rows.length)h='<tr><td colspan="6" style="color:#666;text-align:center">暂无运营</td></tr>';
-rows.forEach(function(o){
-var on=o.active!==false;
-h+='<tr>';
-h+='<td>'+o.name+'</td>';
-h+='<td><code style="font-size:11px">'+o.token+'</code> <button class="btn-copy" onclick="copy(\''+o.token+'\')">📋</button></td>';
-h+='<td><span class="badge '+(on?'badge-on':'badge-off')+'">'+(on?'启用':'停用')+'</span></td>';
-h+='<td>'+o.daily_limit+' <button class="btn-copy" onclick="editLimit(\''+o.token+'\','+o.daily_limit+')" style="font-size:10px;padding:1px 4px">✏️</button></td>';
-h+='<td>'+new Date(new Date(o.created).getTime()+o.valid_days*86400000).toLocaleDateString('zh-CN')+' <button class="btn-copy" onclick="editDays(\''+o.token+'\','+o.valid_days+')" style="font-size:10px;padding:1px 4px">✏️</button></td>';
-h+='<td>';
-h+='<button class="btn-pause" onclick="toggle(\''+o.token+'\','+!on+')">'+(on?'暂停':'恢复')+'</button> ';
-h+='<button class="btn-delete" onclick="del(\''+o.token+'\')">删除</button>';
-h+='</td></tr>';
+async function api(method, path, body) {
+  var base = getBaseUrl();
+  var r = await fetch(base + path, {
+    method: method,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': TOKEN },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  var text = await r.text();
+  try { return JSON.parse(text); }
+  catch { return { error: 'Invalid JSON: ' + text.substring(0, 100) }; }
+}
+
+// ——————————————————————————
+// Token 复制（兼容所有浏览器）
+// ——————————————————————————
+function copyToken(token) {
+  // 优先使用现代 Async API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(token).then(function() {
+      toast('✅ Token 已复制到剪贴板！');
+    }).catch(function(err) {
+      fallbackCopy(token);
+    });
+  } else {
+    fallbackCopy(token);
+  }
+}
+
+function fallbackCopy(text) {
+  // 降级：创建临时输入框 + execCommand
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    var ok = document.execCommand('copy');
+    toast(ok ? '✅ Token 已复制到剪贴板！' : '❌ 复制失败，请手动选择文本复制');
+  } catch(e) {
+    toast('❌ 复制失败，请手动选择文本复制', true);
+  }
+  document.body.removeChild(ta);
+}
+
+// 点击整行 token 区切换显示完整/简化
+document.addEventListener('click', function(e) {
+  var td = e.target.closest('.token-cell');
+  if (td && !e.target.closest('button')) {
+    td.classList.toggle('show-full');
+  }
 });
-document.getElementById('list').innerHTML=h;
+
+// ——————————————————————————
+// 运营账号 CRUD
+// ——————————————————————————
+async function loadOps() {
+  var data = await api('GET', '/api/admin/operators');
+  if (data.error) { toast('加载失败: ' + data.error, true); return; }
+  var ops = data.operators || [];
+  var html = '';
+  if (!ops.length) {
+    html = '<tr><td colspan="6" style="color:#666;text-align:center">暂无运营账号</td></tr>';
+  }
+  ops.forEach(function(o) {
+    var active = o.active !== false;
+    var t = o.token || '';
+    // data-token 用 base64 编码，彻底避免 HTML 特殊字符问题
+    var encoded = btoa(unescape(encodeURIComponent(t)));
+    html += '<tr data-token="' + encoded + '">';
+    html += '<td>' + escHtml(o.name || '-') + '</td>';
+    // Token 格：悬停/点击显示完整值；复制按钮固定在右侧
+    html += '<td class="token-cell">';
+    html += '<span class="token-value" title="点击显示完整Token">' + escHtml(t) + '</span>';
+    html += '<span class="token-full">完整: ' + escHtml(t) + '</span>';
+    html += '<button class="btn-copy" onclick="copyToken(\'' + escJs(t) + '\')" title="复制Token">📋</button>';
+    html += '</td>';
+    html += '<td><span class="badge ' + (active ? 'badge-active' : 'badge-inactive') + '">' + (active ? '启用' : '停用') + '</span></td>';
+    html += '<td>' + (o.daily_limit || '-') + '</td>';
+    html += '<td>' + (o.valid_days ? new Date(new Date(o.created || Date.now()).getTime() + o.valid_days*86400000).toLocaleDateString('zh-CN') : '-') + '</td>';
+    html += '<td>';
+    html += '<button class="btn-pause" onclick="toggleOp(\'' + escJs(t) + '\',' + !active + ')">' + (active ? '暂停' : '恢复') + '</button> ';
+    html += '<button class="btn-delete" onclick="deleteOp(\'' + escJs(t) + '\')">删除</button>';
+    html += '</td></tr>';
+  });
+  document.getElementById('opList').innerHTML = html;
 }
 
-async function create(){
-var n=document.getElementById('name').value.trim();
-if(!n)return toast('请输入姓名');
-var t=token();
-var op={token:t,name:n,daily_limit:parseInt(document.getElementById('limit').value)||100,valid_days:parseInt(document.getElementById('days').value)||30,created:new Date().toISOString(),active:true};
-var d=await api('POST','/rest/v1/'+TABLE,op);
-if(d&&!d.error){toast('创建成功！Token: '+t);document.getElementById('name').value='';load()}
-else toast('失败: '+(d?d.message:''));
+async function createOp() {
+  var name = document.getElementById('opName').value.trim();
+  if (!name) return toast('请输入姓名', true);
+  var data = await api('POST', '/api/admin/operators', {
+    name: name,
+    daily_limit: parseInt(document.getElementById('opLimit').value) || 100,
+    valid_days: parseInt(document.getElementById('opDays').value) || 30
+  });
+  if (data.success) {
+    toast('✅ 创建成功！Token: ' + data.operator.token);
+    document.getElementById('opName').value = '';
+    loadOps();
+  } else {
+    toast('❌ 创建失败: ' + (data.error || 'unknown'), true);
+  }
 }
 
-function copy(t){navigator.clipboard.writeText(t).then(function(){toast('已复制!')})}
-
-async function toggle(t,on){
-await api('PATCH','/rest/v1/'+TABLE+'?token=eq.'+encodeURIComponent(t),{active:on});
-load();
+async function toggleOp(token, active) {
+  var data = await api('PATCH', '/api/admin/operators/' + encodeURIComponent(token), { active: active });
+  if (data.error) toast('操作失败: ' + data.error, true);
+  else toast(active ? '⏸ 已暂停' : '▶ 已恢复');
+  loadOps();
 }
 
-async function del(t){
-if(!confirm('确定删除?'))return;
-await api('DELETE','/rest/v1/'+TABLE+'?token=eq.'+encodeURIComponent(t));
-load();
+async function deleteOp(token) {
+  if (!confirm('确定删除此运营账号？')) return;
+  var data = await api('DELETE', '/api/admin/operators/' + encodeURIComponent(token));
+  if (data.error) toast('删除失败: ' + data.error, true);
+  else toast('🗑 已删除');
+  loadOps();
 }
 
-function toast(m){var t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(function(){t.style.display='none'},3000)}
-
-
-async function editLimit(token, current) {
-  var v = prompt('新每日配额:', current);
-  if (!v || isNaN(v)) return;
-  await api('PATCH', '/rest/v1/' + TABLE + '?token=eq.' + encodeURIComponent(token), { daily_limit: parseInt(v) });
-  load();
+// ——————————————————————————
+// 工具函数
+// ——————————————————————————
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-async function editDays(token, current) {
-  var v = prompt('新有效天数:', current);
-  if (!v || isNaN(v)) return;
-  await api('PATCH', '/rest/v1/' + TABLE + '?token=eq.' + encodeURIComponent(token), { valid_days: parseInt(v) });
-  load();
+function escJs(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
 }
 
-load();
+loadOps();
 </script>
 </body>
 </html>
