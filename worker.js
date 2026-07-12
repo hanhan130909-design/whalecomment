@@ -1,7 +1,7 @@
-// WhaleComment Worker — runs in Electron child process
+﻿// WhaleComment Worker 鈥?runs in Electron child process
 var hostId = process.argv[2] || 'h_1783502518392';
 var token = process.argv[3] || '';
-var API = 'https://prolific-adventure-production-9b13.up.railway.app';
+var API = 'https://whalecomment-backend.onrender.com';
 var path = require('path');
 var fs = require('fs');
 
@@ -10,11 +10,11 @@ function log(msg) { process.stdout.write(msg + '\n'); }
 
 // MVP Stats
 var mvpStats = {
-  target: 100,           // 目标：100个有效任务
-  completed: 0,          // 成功评论数
-  liked: 0,              // 点赞数
-  failed: 0,             // 失败数（无法评论、无视频等）
-  skipped: 0,            // 跳过数
+  target: 100,           // 鐩爣锛?00涓湁鏁堜换鍔?
+  completed: 0,          // 鎴愬姛璇勮鏁?
+  liked: 0,              // 鐐硅禐鏁?
+  failed: 0,             // 澶辫触鏁帮紙鏃犳硶璇勮銆佹棤瑙嗛绛夛級
+  skipped: 0,            // 璺宠繃鏁?
   startTime: Date.now()
 };
 
@@ -29,7 +29,7 @@ log('[WC] __dirname: ' + __dirname);
 log('[WC] resourcesPath: ' + (process.resourcesPath || 'N/A'));
 log('[WC] MVP Target: ' + mvpStats.target + ' valid interactions');
 
-// Resolve puppeteer — handles both dev and packed modes
+// Resolve puppeteer 鈥?handles both dev and packed modes
 var puppeteer, StealthPlugin;
 try {
   // Try puppeteer-core first (no Chromium download needed)
@@ -38,11 +38,11 @@ try {
   var pe = require('puppeteer-extra');
   pe.use(StealthPlugin());
   puppeteer = pe;
-  log('[WC] ✓ puppeteer-core loaded');
+  log('[WC] 鉁?puppeteer-core loaded');
 } catch(e) {
   // Try WhaleSense fallback (only works if WhaleSense is installed)
   try {
-    var wsM = 'D:/金主项目/WhaleSense_Windows/WhaleSense_Windows/backend/node_modules';
+    var wsM = 'D:/閲戜富椤圭洰/WhaleSense_Windows/WhaleSense_Windows/backend/node_modules';
     puppeteer = require(wsM + '/puppeteer-extra');
     StealthPlugin = require(wsM + '/puppeteer-extra-plugin-stealth');
     puppeteer.use(StealthPlugin());
@@ -147,10 +147,10 @@ async function likeVideo(page) {
     log('[WC] DEBUG like: ' + JSON.stringify(liked.debug));
     
     if (liked.status === 'already') {
-      log('[WC] ❤️ Already liked this video');
+      log('[WC] 鉂わ笍 Already liked this video');
       return true;
     } else if (liked.status === 'liked') {
-      // Found the button and it's not liked yet — CLICK IT
+      // Found the button and it's not liked yet 鈥?CLICK IT
       var clickSuccess = false;
       try {
         // Click using page.click (real mouse event, triggers React)
@@ -189,23 +189,23 @@ async function likeVideo(page) {
           return html.includes('fill="#fe2c55"') || html.includes("fill='#fe2c55'");
         });
         if (verified) {
-          log('[WC] ❤️ Liked video!');
+          log('[WC] 鉂わ笍 Liked video!');
           mvpStats.liked++;
           return true;
         } else {
-          log('[WC] ⚠️ Like click attempted but not verified');
+          log('[WC] 鈿狅笍 Like click attempted but not verified');
           return true; // Count it anyway since click succeeded
         }
       } catch(e) {
-        log('[WC] ⚠️ Like click error: ' + e.message);
+        log('[WC] 鈿狅笍 Like click error: ' + e.message);
         return false;
       }
     } else {
-      log('[WC] ⚠️ Could not find like button');
+      log('[WC] 鈿狅笍 Could not find like button');
       return false;
     }
   } catch(e) {
-    log('[WC] ⚠️ Like error: ' + e.message);
+    log('[WC] 鈿狅笍 Like error: ' + e.message);
     return false;
   }
 }
@@ -220,7 +220,7 @@ async function hasVideos(page) {
       
       // Check for "No videos" message
       var body = document.body.textContent || '';
-      if (body.includes('No videos') || body.includes('No content') || body.includes('没有视频')) {
+      if (body.includes('No videos') || body.includes('No content') || body.includes('娌℃湁瑙嗛')) {
         return false;
       }
       
@@ -346,7 +346,7 @@ async function main() {
       
       // Check if MVP target reached
       if (mvpStats.completed >= mvpStats.target) {
-        log('[MVP] 🎉 MVP TARGET REACHED! ' + mvpStats.completed + '/' + mvpStats.target);
+        log('[MVP] 馃帀 MVP TARGET REACHED! ' + mvpStats.completed + '/' + mvpStats.target);
         reportStats();
         log('[WC] Continuing to process more tasks...');
       }
@@ -373,7 +373,7 @@ async function main() {
 
       dots = 0;  // Reset progress dots
       var task = data.tasks[0];
-      var text = task.commentText || 'Hai! 🔥';
+      var text = task.commentText || 'Hai! 馃敟';
       log('\n[WC] Target: ' + task.profileId + ' | ' + text.substring(0, 40));
 
       // Track retries per task
@@ -381,7 +381,7 @@ async function main() {
       retryCount[taskId] = (retryCount[taskId] || 0) + 1;
       
       if (retryCount[taskId] > 3) {
-        log('[WC] ✗ Max retries reached, skipping this task');
+        log('[WC] 鉁?Max retries reached, skipping this task');
         if (task.id) {
           fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
             method: 'PATCH',
@@ -399,7 +399,7 @@ async function main() {
       // Supports all task formats: generate-tasks (profileId+videoUrl), batch (whale_username)
       var targetUsername = task.profileId || task.whale_username || '';
       if (!targetUsername) {
-        log('[WC] ✗ Task missing target username (profileId and whale_username both empty), skipping');
+        log('[WC] 鉁?Task missing target username (profileId and whale_username both empty), skipping');
         if (task.id) {
           fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
             method: 'PATCH',
@@ -425,7 +425,7 @@ async function main() {
         return href.indexOf('/@' + username.toLowerCase()) !== -1;
       }, targetUsername);
       if (!onTarget) {
-        log('[WC] ✗ Redirected away from @' + targetUsername + ' (landed: ' + landedHref + ') - skipping');
+        log('[WC] 鉁?Redirected away from @' + targetUsername + ' (landed: ' + landedHref + ') - skipping');
         if (task.id) {
           fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
             method: 'PATCH',
@@ -445,7 +445,7 @@ async function main() {
         // Check if profile has videos
         var hasVideo = await hasVideos(page);
         if (!hasVideo) {
-          log('[WC] ✗ Profile has no videos - skipping');
+          log('[WC] 鉁?Profile has no videos - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
               method: 'PATCH',
@@ -472,7 +472,7 @@ async function main() {
         }, targetUsername);
         
         if (!ownVideoHref) {
-          log('[WC] ✗ No own-video link found for @' + targetUsername + ' - skipping');
+          log('[WC] 鉁?No own-video link found for @' + targetUsername + ' - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
               method: 'PATCH',
@@ -484,7 +484,7 @@ async function main() {
           continue;
         }
         // Navigate directly to the own-video URL
-        log('[WC] → Navigating to own video: ' + ownVideoHref);
+        log('[WC] 鈫?Navigating to own video: ' + ownVideoHref);
         await page.goto(ownVideoHref, { waitUntil: 'load', timeout: 90000 });
         // Wait for the main frame to be fully attached + for the video element to mount
         try { await page.waitForSelector('video', { timeout: 30000 }); } catch (_) {}
@@ -497,7 +497,7 @@ async function main() {
           return href.indexOf('/@' + username.toLowerCase() + '/video/') !== -1;
         }, targetUsername);
         if (!onVideoOfTarget) {
-          log('[WC] ✗ Landed on wrong page (not target video): ' + finalHref + ' - skipping');
+          log('[WC] 鉁?Landed on wrong page (not target video): ' + finalHref + ' - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
               method: 'PATCH',
@@ -676,7 +676,7 @@ async function main() {
 
       if (!result.found) {
         if (result.reason === 'restricted') {
-          log('[WC] ✗ Comments are restricted on this video - skipping');
+          log('[WC] 鉁?Comments are restricted on this video - skipping');
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
               method: 'PATCH',
@@ -686,7 +686,7 @@ async function main() {
           }
           mvpStats.failed++;
         } else {
-          log('[WC] ✗ Comment panel not found (reason: ' + result.reason + ') - retrying with scroll');
+          log('[WC] 鉁?Comment panel not found (reason: ' + result.reason + ') - retrying with scroll');
           // Retry after scrolling to comment section
           await page.evaluate(function() {
             window.scrollBy(0, 400);
@@ -706,7 +706,7 @@ async function main() {
             return false;
           });
           if (!retryResult) {
-            log('[WC] ✗ Still no comment input after retry - marking as comments disabled');
+            log('[WC] 鉁?Still no comment input after retry - marking as comments disabled');
             if (task.id) {
               fetch(API + '/api/tasks/' + task.id + '?token=' + token, {
                 method: 'PATCH',
@@ -749,7 +749,7 @@ async function main() {
           return true;
         }, marker);
         if (!marked) {
-          log('[WC] ✗ Could not re-locate input for typing');
+          log('[WC] 鉁?Could not re-locate input for typing');
           mvpStats.failed++;
           if (task.id) {
             fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Input not re-locatable', executed_at: new Date().toISOString() }) }).catch(function(){});
@@ -757,7 +757,7 @@ async function main() {
           await page.keyboard.press('Escape');
           await sleep(500);
         } else {
-          // Step 2: click into the input and clear it (Ctrl+A, Delete) — these fire real keyboard events
+          // Step 2: click into the input and clear it (Ctrl+A, Delete) 鈥?these fire real keyboard events
           await page.click('[' + marker + '="1"]');
           await sleep(200);
           await page.keyboard.down('Control');
@@ -765,7 +765,7 @@ async function main() {
           await page.keyboard.up('Control');
           await page.keyboard.press('Delete');
           await sleep(300);
-          // Step 3: type using page.keyboard.type — fires real keydown/keypress/input events that React listens to
+          // Step 3: type using page.keyboard.type 鈥?fires real keydown/keypress/input events that React listens to
           await page.keyboard.type(text, { delay: 40 });
           await sleep(1500);
           // Step 4: verify text actually went into the input
@@ -776,7 +776,7 @@ async function main() {
           }, marker);
           log('[WC] DEBUG typed-into: "' + inputText.substring(0, 80) + '" (len=' + inputText.length + ')');
           if (inputText.length < 5) {
-            log('[WC] ✗ Typing FAILED: input is empty after keyboard.type — React onChange did not fire');
+            log('[WC] 鉁?Typing FAILED: input is empty after keyboard.type 鈥?React onChange did not fire');
             mvpStats.failed++;
             if (task.id) {
               fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Typing failed: input empty', executed_at: new Date().toISOString() }) }).catch(function(){});
@@ -796,7 +796,7 @@ async function main() {
               var all = document.querySelectorAll('button, div[role="button"], span');
               for (var i = 0; i < all.length; i++) {
                 var t = (all[i].textContent || '').trim().toLowerCase();
-                if ((t === 'post' || t === 'kirim' || t === '发布' || t === 'publish' || t === 'send') && all[i].offsetParent !== null && !all[i].disabled) {
+                if ((t === 'post' || t === 'kirim' || t === '鍙戝竷' || t === 'publish' || t === 'send') && all[i].offsetParent !== null && !all[i].disabled) {
                   all[i].click(); return 'text:' + t;
                 }
               }
@@ -805,11 +805,11 @@ async function main() {
             if (posted) {
               log('[WC] Clicked Post button (' + posted + ')');
             } else {
-              log('[WC] No enabled Post button — pressing Enter');
+              log('[WC] No enabled Post button 鈥?pressing Enter');
               await page.keyboard.press('Enter');
             }
             await sleep(3500);
-            // Step 6: CRITICAL — verify the comment actually appears in the comment list (not just "Posted (class)" which was a false positive)
+            // Step 6: CRITICAL 鈥?verify the comment actually appears in the comment list (not just "Posted (class)" which was a false positive)
             var verified = await page.evaluate(function(searchText) {
               var items = document.querySelectorAll('[class*="CommentItem"], [class*="comment-item"], [class*="CommentTextContainer"], [data-e2e="comment-level-1"], [class*="comment-text"]');
               for (var it of items) {
@@ -825,7 +825,7 @@ async function main() {
             }, text);
             if (verified === true) {
               mvpStats.completed++;
-              log('[WC] ✓ VERIFIED in comment list, MVP: ' + mvpStats.completed + '/' + mvpStats.target);
+              log('[WC] 鉁?VERIFIED in comment list, MVP: ' + mvpStats.completed + '/' + mvpStats.target);
               if (task.id) {
                 fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed', executed_at: new Date().toISOString(), liked: true, verified: true }) }).catch(function(){});
               }
@@ -837,7 +837,7 @@ async function main() {
               }
             } else {
               mvpStats.failed++;
-              log('[WC] ✗ NOT VERIFIED: post button clicked but comment not in list — treating as FAILURE');
+              log('[WC] 鉁?NOT VERIFIED: post button clicked but comment not in list 鈥?treating as FAILURE');
               if (task.id) {
                 fetch(API + '/api/tasks/' + task.id + '?token=' + token, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Comment not in list after post', executed_at: new Date().toISOString() }) }).catch(function(){});
               }
