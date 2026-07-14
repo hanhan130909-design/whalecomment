@@ -467,6 +467,10 @@ app.get('/api/verify-token', function(req, res) {
   res.json({ valid: true, name: op.name, daily_limit: op.daily_limit });
 });
 
+
+// Load v1.2.3 routes
+require('./routes/v1_2_3')(app, getSupa, taskStore, operatorTokens);
+
 app.listen(PORT, function() {
   console.log('[WhaleComment] API v' + CURRENT_VERSION + ' running on port ' + PORT);
   console.log('[WhaleComment] Operators ready: ' + operatorTokens.size);
