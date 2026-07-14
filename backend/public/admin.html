@@ -23,51 +23,49 @@ button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight
 <body>
 <h1>🐋 WhaleComment 管理后台</h1>
 <div class="card">
-<h2 style="margin-bottom:16px">创建运营账号</h2>
+<h2>创建运营账号</h2>
 <input id="name" placeholder="姓名" style="width:150px"><input id="limit" type="number" value="100" style="width:80px"><input id="days" type="number" value="30" style="width:80px">
-<button class="btn-new" onclick="create()">创建运营账号</button>
+<button class="btn-new" onclick="create()">创建</button>
 </div>
 <div class="card">
-<h2 style="margin-bottom:16px">运营列表 <button class="btn-refresh" onclick="load()">🔄</button></h2>
+<h2>运营列表 <button class="btn-refresh" onclick="load()">🔄</button></h2>
 <table><thead><tr><th>姓名</th><th>Token</th><th>状态</th><th>配额</th><th>到期</th><th>操作</th></tr></thead>
 <tbody id="list"><tr><td colspan="6" style="color:#666;text-align:center">加载中...</td></tr></tbody></table>
 </div>
 <div class="toast" id="toast"></div>
 <script>
-var API='';
-var TOKEN='wc_admin_2026_secret_token';
+var API='',TOKEN='wc_admin_2026_secret_token';
+
 async function api(method,path,body){
 var h={'x-admin-token':TOKEN,'Content-Type':'application/json'};
-var r=await fetch(API+path,{method:method,headers:h,body:body?JSON.stringify(body):undefined});
+var r=await fetch(API+path,{method:method,headers:h,body:body?JSON.stringify(body):null});
 return r.json();
 }
-function token(){var a='0123456789abcdef',t='wc_op_';for(var i=0;i<40;i++)t+=a[Math.floor(Math.random()*16)];return t}
+
 async function load(){
-var d=await api('GET','/api/admin/operators');
-var rows=d.operators||[];
-var h='';
-if(!rows.length)h='<tr><td colspan="6" style="color:#666;text-align:center">暂无运营</td></tr>';
+var d=await api('GET','/api/admin/operators'),rows=d.operators||[];
+var h='';if(!rows.length)h='<tr><td colspan="6" style="color:#666;text-align:center">暂无运营</td></tr>';
 rows.forEach(function(o){
 var on=o.active!==false;
 h+='<tr><td>'+o.name+'</td>';
-h+='<td><code style="font-size:11px">'+o.token+'</code> <button class="btn-copy" onclick="copy(\''+o.token+'\')">📋</button></td>';
+h+='<td><code>'+o.token+'</code> <button class="btn-copy" onclick="copy(''+o.token+'')">📋</button></td>';
 h+='<td><span class="badge '+(on?'badge-on':'badge-off')+'">'+(on?'启用':'停用')+'</span></td>';
-h+='<td>'+o.daily_limit+' <button class="btn-copy" onclick="editLimit(\''+o.token+'\','+o.daily_limit+')" style="font-size:10px;padding:1px 4px">✏️</button></td>';
-h+='<td>'+new Date(new Date(o.created).getTime()+o.valid_days*86400000).toLocaleDateString('zh-CN')+' <button class="btn-copy" onclick="editDays(\''+o.token+'\','+o.valid_days+')" style="font-size:10px;padding:1px 4px">✏️</button></td>';
-h+='<td><button class="btn-pause" onclick="toggle(\''+o.token+'\','+!on+')">'+(on?'暂停':'恢复')+'</button> <button class="btn-delete" onclick="del(\''+o.token+'\')">删除</button></td></tr>';
+h+='<td>'+o.daily_limit+'</td>';
+h+='<td>'+(o.created?new Date(new Date(o.created).getTime()+(o.valid_days||30)*86400000).toLocaleDateString('zh-CN'):'-')+'</td>';
+h+='<td><button class="btn-pause" onclick="toggle(''+o.token+'','+!on+')">'+(on?'暂停':'恢复')+'</button> <button class="btn-delete" onclick="del(''+o.token+'')">删除</button></td></tr>';
 });
 document.getElementById('list').innerHTML=h;
 }
+
 async function create(){
 var n=document.getElementById('name').value.trim();if(!n)return toast('请输入姓名');
 var d=await api('POST','/api/admin/operators',{name:n,daily_limit:parseInt(document.getElementById('limit').value)||100,valid_days:parseInt(document.getElementById('days').value)||30});
 if(d.success){toast('创建成功！Token: '+d.operator.token);document.getElementById('name').value='';load()}else toast('失败: '+(d.error||''));
 }
+
 function copy(t){navigator.clipboard.writeText(t).then(function(){toast('已复制!')})}
-async function toggle(t,on){await api('PATCH','/api/admin/operators/'+encodeURIComponent(t),{active:on});load()}
-async function del(t){if(!confirm('确定删除?'))return;await api('DELETE','/api/admin/operators/'+encodeURIComponent(t));load()}
-async function editLimit(t,c){var v=prompt('新每日配额:',c);if(!v||isNaN(v))return;await api('PATCH','/api/admin/operators/'+encodeURIComponent(t),{daily_limit:parseInt(v)});load()}
-async function editDays(t,c){var v=prompt('新有效天数:',c);if(!v||isNaN(v))return;await api('PATCH','/api/admin/operators/'+encodeURIComponent(t),{valid_days:parseInt(v)});load()}
+async function toggle(t,on){await api('PATCH','/api/admin/operators/'+t,{active:on});load()}
+async function del(t){if(!confirm('确定删除?'))return;await api('DELETE','/api/admin/operators/'+t);load()}
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(function(){t.style.display='none'},3000)}
 load();
 </script>
