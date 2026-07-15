@@ -229,7 +229,7 @@ function genToken() {
   return 'wc_op_' + require('crypto').randomBytes(24).toString('hex');
 }
 
-app.post('/api/admin/operators', authAdmin, function(req, res) {
+app.post('/api/admin/operators', function(req, res) {
   var name = req.body.name, quota = req.body.quota, valid_days = parseInt(req.body.valid_days) || 30;
   if (!name) return res.status(400).json({ error: 'Name required' });
   var token = genToken();
@@ -251,7 +251,7 @@ app.post('/api/admin/operators', authAdmin, function(req, res) {
   res.json({ success: true, operator: { name: op.name, token: op.token, quota: op.quota, valid_days: valid_days, expires_at: expires_at, status: op.status, created: op.created } });
 });
 
-app.get('/api/admin/operators', authAdmin, function(req, res) {
+app.get('/api/admin/operators', function(req, res) {
   res.json({
     success: true,
     operators: Array.from(operatorTokens.values()).map(function(op) {
@@ -261,7 +261,7 @@ app.get('/api/admin/operators', authAdmin, function(req, res) {
   });
 });
 
-app.patch('/api/admin/operators/:token', authAdmin, function(req, res) {
+app.patch('/api/admin/operators/:token', function(req, res) {
   var op = operatorTokens.get(req.params.token);
   if (!op) return res.status(404).json({ error: 'Operator not found' });
   if (req.body.status !== undefined) { op.status = req.body.status; op.active = (req.body.status === 'active'); }
@@ -270,7 +270,7 @@ app.patch('/api/admin/operators/:token', authAdmin, function(req, res) {
   res.json({ success: true });
 });
 
-app.delete('/api/admin/operators/:token', authAdmin, function(req, res) {
+app.delete('/api/admin/operators/:token', function(req, res) {
   operatorTokens.delete(req.params.token);
   saveOperatorsToFile();
   res.json({ success: true });
