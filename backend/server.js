@@ -520,7 +520,7 @@ app.get('/api/verify-token', function(req, res) {
 
 
 // Load v1.2.3 routes
-require('./routes/v1_2_3')(app, getSupa, taskStore, operatorTokens);
+require('./v1_2_3_routes')(app, getSupa, taskStore, operatorTokens);
 
 app.listen(PORT, function() {
   console.log('[WhaleComment] API v' + CURRENT_VERSION + ' running on port ' + PORT);
