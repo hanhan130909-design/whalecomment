@@ -130,36 +130,53 @@ const ADMIN_TOKEN = 'wc_admin_2026_secret_token';
 const operatorTokens = new Map();
 const OPERATORS_FILE = path.join(__dirname, 'operators.json');
 
-// Load operators asynchronously
-getSupaAnon().from('comment_operators').select('*').then(function(r) {
-  if (r.data && r.data.length) {
-    r.data.forEach(function(o) {
-      if (o.token) {
-        var vd = o.valid_days || 30;
-        var created = new Date(o.created_at || Date.now());
-        var expiresAt = new Date(created.getTime() + vd * 86400000);
-        operatorTokens.set(o.token, {
-          id: o.id,
-          name: o.display_name || o.name || 'Operator',
-          token: o.token,
-          quota: o.daily_limit || o.quota || 100,
-          daily_limit: o.daily_limit || o.quota || 100,
-          valid_days: vd,
-          created: created.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          status: (o.active === false) ? 'suspended' : 'active',
-          used_today: 0,
-          remaining_today: o.daily_limit || o.quota || 100,
-          permissions: o.permissions || ['comment', 'like'],
-          active: o.active !== false
-        });
-      }
-    });
-  }
-  console.log('[ADMIN] Loaded', operatorTokens.size, 'operators from Supabase');
-}).catch(function(e) {
-  console.log('[ADMIN] Supabase load failed:', e.message);
-}).finally(function() {
+// Load operators from both Supabase tables + local file (cold-start recovery)
+async function loadOperators() {
+  // 1. Try comment_operators table (admin API creates here)
+  try {
+    var r = await getSupaAnon().from('comment_operators').select('*');
+    if (r.data && r.data.length) {
+      r.data.forEach(function(o) {
+        if (o.token && !operatorTokens.has(o.token)) {
+          var vd = o.valid_days || 30;
+          var created = new Date(o.created_at || Date.now());
+          var expiresAt = new Date(created.getTime() + vd * 86400000);
+          operatorTokens.set(o.token, {
+            id: o.id, name: o.display_name || o.name || 'Operator', token: o.token,
+            quota: o.daily_limit || 100, daily_limit: o.daily_limit || 100,
+            valid_days: vd, created: created.toISOString(), created_at: created.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            status: (o.active === false) ? 'suspended' : 'active',
+            used_today: 0, remaining_today: o.daily_limit || 100,
+            permissions: o.permissions || ['comment', 'like'], active: o.active !== false
+          });
+        }
+      });
+    }
+    console.log('[ADMIN] Loaded', operatorTokens.size, 'from comment_operators');
+  } catch(e) { console.log('[ADMIN] comment_operators load:', e.message); }
+
+  // 2. Also try operator_tokens table (v1.2.3 creates here)
+  try {
+    var r2 = await getSupa().from('operator_tokens').select('*');
+    if (r2.data && r2.data.length) {
+      r2.data.forEach(function(o) {
+        if (o.token && !operatorTokens.has(o.token)) {
+          operatorTokens.set(o.token, {
+            id: o.id, name: o.name || 'Operator', token: o.token,
+            quota: o.daily_limit || 100, daily_limit: o.daily_limit || 100,
+            valid_days: o.valid_days || 30, created: o.created || new Date().toISOString(),
+            expires_at: o.expires_at || new Date(Date.now() + 30*86400000).toISOString(),
+            status: (o.active !== false) ? 'active' : 'suspended',
+            used_today: 0, permissions: ['comment', 'like'], active: o.active !== false
+          });
+        }
+      });
+    }
+    console.log('[ADMIN] Total after operator_tokens:', operatorTokens.size);
+  } catch(e) { console.log('[ADMIN] operator_tokens load:', e.message); }
+
+  // 3. Fallback: local file
   try {
     if (fs.existsSync(OPERATORS_FILE)) {
       var data = JSON.parse(fs.readFileSync(OPERATORS_FILE, 'utf8'));
@@ -173,7 +190,8 @@ getSupaAnon().from('comment_operators').select('*').then(function(r) {
     }
   } catch(ex) {}
   console.log('[ADMIN] Operators ready:', operatorTokens.size);
-});
+}
+loadOperators();
 
 function saveOperatorsToFile() {
   try {
@@ -192,7 +210,16 @@ function validateOperatorToken(req, res, next) {
   if (!tok) return res.status(401).json({ error: 'Token required' });
   var op = operatorTokens.get(tok);
   if (!op) return res.status(403).json({ error: 'Invalid token' });
-  if (op.active === false) return res.status(403).json({ error: 'Token suspended' });
+  if (op.active === false || op.status === 'suspended') return res.status(403).json({ error: 'Token suspended' });
+  // Check expiration (paid tokens with valid_days set)
+  if (op.valid_days && op.valid_days > 0) {
+    var created = new Date(op.created_at || op.created || Date.now());
+    var expires = new Date(created.getTime() + op.valid_days * 86400000);
+    if (Date.now() > expires.getTime()) {
+      op.status = 'expired'; op.active = false;
+      return res.status(403).json({ error: 'Token expired on ' + expires.toISOString().split('T')[0] });
+    }
+  }
   req.operator = op;
   req.operatorToken = tok;
   next();
@@ -203,14 +230,25 @@ function genToken() {
 }
 
 app.post('/api/admin/operators', authAdmin, function(req, res) {
-  var name = req.body.name, quota = req.body.quota;
+  var name = req.body.name, quota = req.body.quota, valid_days = parseInt(req.body.valid_days) || 30;
   if (!name) return res.status(400).json({ error: 'Name required' });
   var token = genToken();
-  var op = { id: 'op_' + Date.now(), name: name, token: token, status: 'active', quota: quota || 100, used_today: 0, created: new Date().toISOString() };
+  var now = new Date().toISOString();
+  var expires_at = new Date(Date.now() + valid_days * 86400000).toISOString();
+  var op = {
+    id: 'op_' + Date.now(), name: name, token: token, status: 'active',
+    quota: quota || 100, daily_limit: quota || 100,
+    valid_days: valid_days, created: now, created_at: now, expires_at: expires_at,
+    used_today: 0, active: true
+  };
   operatorTokens.set(token, op);
   saveOperatorsToFile();
-  getSupa().from('comment_operators').upsert({ email: token + '@op.wc', display_name: name, token: token, daily_limit: quota || 100, active: true }).then(function(){}).catch(function(e){});
-  res.json({ success: true, operator: { name: op.name, token: op.token, quota: op.quota, status: op.status, created: op.created } });
+  getSupa().from('comment_operators').upsert({
+    email: token + '@op.wc', display_name: name, token: token,
+    daily_limit: quota || 100, valid_days: valid_days,
+    created_at: now, active: true
+  }).then(function(){}).catch(function(e){ console.log('[SUPA] upsert error:', e.message); });
+  res.json({ success: true, operator: { name: op.name, token: op.token, quota: op.quota, valid_days: valid_days, expires_at: expires_at, status: op.status, created: op.created } });
 });
 
 app.get('/api/admin/operators', authAdmin, function(req, res) {
@@ -311,6 +349,10 @@ app.patch('/api/hosts/:id', function(req, res) {
 
 const taskStore = {};
 
+// Track completed whale profiles per host to prevent duplicates
+var completedProfiles = {};  // { hostId: Set } - set of profileIds already commented
+
+
 // GENERATE TASKS - main worker endpoint
 app.post('/api/hosts/:id/generate-tasks', function(req, res) {
   var hostId = req.params.id;
@@ -344,12 +386,16 @@ app.post('/api/hosts/:id/generate-tasks', function(req, res) {
   if (!allW.length) allW = WHALES.slice(0, limit);
 
   if (!taskStore[hostId]) taskStore[hostId] = [];
+  if (!completedProfiles[hostId]) completedProfiles[hostId] = {};
 
   var existNames = {};
+  // Check current taskStore (prevents re-generating same whale in same batch)
   for (var ti = 0; ti < taskStore[hostId].length; ti++) {
     var t = taskStore[hostId][ti];
     existNames[t.profileId || t.username || t.whale_username] = 1;
   }
+  // Check completedProfiles (whales already commented across sessions)
+  Object.keys(completedProfiles[hostId]).forEach(function(k) { existNames[k] = 1; });
 
   var count = 0;
   var hostName = (host && (host.display_name || host.tiktok_username)) || 'kita';
@@ -423,6 +469,11 @@ app.patch('/api/tasks/:id', function(req, res) {
       if (t.id === req.params.id) {
         Object.assign(t, req.body || {});
         if (req.body.status === 'completed') {
+          var profileId = t.profileId || t.whale_username || t.username;
+          if (profileId) {
+            if (!completedProfiles[keys[ki]]) completedProfiles[keys[ki]] = {};
+            completedProfiles[keys[ki]][profileId] = 1;
+          }
           for (var ops = Object.values(hostStore), oi = 0; oi < ops.length; oi++) {
             var h = ops[oi].find(function(x) { return x.id === keys[ki]; });
             if (h) { h.daily_comment_count = (h.daily_comment_count || 0) + 1; break; }
