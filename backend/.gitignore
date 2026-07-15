@@ -1,6 +1,5 @@
 ﻿node_modules/
 releases/
-routes/
 .env
 setup_db.js
 _test_auth.js
