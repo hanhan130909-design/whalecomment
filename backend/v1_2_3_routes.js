@@ -83,7 +83,7 @@ module.exports = function(app, getSupa, taskStore, operatorTokens) {
   app.get('/api/tasks/generate', async function(req, res) {
     try {
       var hostId = req.query.host_id || 'rachelliyagtha03';
-      var limit = parseInt(req.query.limit) || 30;
+      var limit = parseInt(req.query.limit) || 100;
       if (!taskStore[hostId]) taskStore[hostId] = [];
       var s = getSupa();
       var { data: whales } = await s.from('whale_profiles').select('*').order('total_gifts', { ascending: false }).limit(limit);
