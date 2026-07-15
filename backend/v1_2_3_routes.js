@@ -1,5 +1,15 @@
 // v1.2.3 EXE compatible + Admin Ops with Supabase persistence
 module.exports = function(app, getSupa, taskStore, operatorTokens) {
+  app.get('/api/tasks/reset', function(req, res) {
+    var hostId = req.query.host_id;
+    if (hostId) {
+      taskStore[hostId] = [];
+      res.json({ success: true, message: 'Tasks cleared for ' + hostId });
+    } else {
+      res.json({ success: false, error: 'host_id required' });
+    }
+  });
+
 
   // === Supabase-backed Admin Ops ===
   app.get('/api/admin/ops', async function(req, res) {
